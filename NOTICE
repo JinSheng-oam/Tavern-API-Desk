@@ -1,0 +1,17 @@
+Tavern API Desk
+Copyright (C) 2026 Jin and contributors.
+
+Derived from ST-Quicker-Api by Qianzhuo and contributors:
+https://github.com/qianzhuowo/ST-Quicker-Api
+Upstream version: 3.8.6 (main, retrieved 2026-10-29).
+Upstream commit: 5d55e1e0c7fc64d388e9bc1b823d21cbc446aa5b.
+The original connection, credential verification, preset, model and host
+compatibility implementation is retained and modified under GPL-3.0-only.
+The full license is included in LICENSE.
+
+Changes: namespaced independent settings, searchable/favorite configuration
+workspace, draft protection, visible apply/persistence status, explicit legacy
+migration, credential-free portable import/export, and regression coverage.
+
+Development documents and preview artifacts are intentionally not included in
+the installable archive.

@@ -1,0 +1,13 @@
+{
+  "name": "Tavern API Desk",
+  "display_name": "API Desk · 酒馆 API 管理",
+  "loading_order": 4,
+  "requires": [],
+  "optional": [],
+  "description": "多 API 配置、模型管理、预设快捷切换与安全迁移备份。基于 ST-Quicker-Api 改造。",
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Jin; upstream: Qianzhuo",
+  "homePage": "https://github.com/JinSheng-oam/Tavern-API-Desk",
+  "version": "1.0.0"
+}

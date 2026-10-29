@@ -1,0 +1,10 @@
+node_modules/
+.preview/
+test-results/
+*.log
+# Development documentation stays local.
+docs/
+PRODUCT.md
+DESIGN.md
+.impeccable/
+参考文件和文档/
