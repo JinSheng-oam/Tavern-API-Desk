@@ -113,6 +113,7 @@ const DEFAULT_SETTINGS = {
     blockedSecretKeys: {},
     quickActions: [],
     quickActionPlacement: 'leftSendForm',
+    showNativeApi: true,
     quickUrls: [],
 };
 
@@ -432,6 +433,7 @@ function initializeSettings() {
     value.quickActionPlacement = ['leftSendForm', 'rightSendForm', 'qrButtons', 'disabled'].includes(value.quickActionPlacement)
         ? value.quickActionPlacement
         : 'rightSendForm';
+    value.showNativeApi = value.showNativeApi !== false;
     value.quickActions = Array.isArray(value.quickActions)
         ? value.quickActions.map(normalizeQuickAction).filter(action => action.preset || action.profileId || action.model)
         : [];
@@ -515,6 +517,28 @@ function keyExposureHelpHtml() {
 function toolbarHtml() {
     const formatOptions = Object.entries(FORMATS).filter(([format]) => isFormatSupported(format)).map(([value, config]) => `<option value="${value}">${escapeHtml(config.label)}</option>`).join('');
     return deskToolbar(formatOptions, keyExposureHelpHtml());
+}
+
+function mountExtensionSettings() {
+    const container = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
+    if (!container || document.getElementById('tavern_api_extension_settings')) return;
+    const section = $(`<div id="tavern_api_extension_settings" class="extension_container tavern-api__settings">
+        <details><summary><strong>API Desk</strong></summary>
+            <label class="checkbox_label" for="tavern_api_show_native">
+                <input id="tavern_api_show_native" type="checkbox"><span>显示原生聊天补全 API 设置</span>
+            </label>
+            <small>关闭后保留 API Desk 工作台和主 API 选择，可随时在此重新显示原生设置。</small>
+            <div class="tavern-api__settings-save"><span id="tavern_api_settings_persistence" role="status" aria-live="polite"></span>
+                <button id="tavern_api_settings_retry" class="menu_button" type="button" hidden>重试保存</button></div>
+        </details></div>`);
+    $(container).append(section);
+    section.find('#tavern_api_show_native').prop('checked', settings().showNativeApi).on('change', function () {
+        settings().showNativeApi = this.checked;
+        updatePanelVisibility();
+        scheduleSettingsSave();
+    });
+    section.find('#tavern_api_settings_retry').on('click', () => void enqueueOperation(persistSettingsNow));
+    renderDeskPersistence();
 }
 
 function readBrowserPanelState() {
@@ -3310,14 +3334,10 @@ function configureAdditionalParametersPopup() {
 }
 
 function updatePanelVisibility() {
-    const supported = SUPPORTED_SOURCES.has(String($('#chat_completion_source').val()));
     $('#tavern_api').show();
     updateAdditionalParametersButton();
-    if (supported) {
-        $('#custom_form, #claude_form, #makersuite_form').addClass('tavern-api__native-provider');
-    } else {
-        $('#custom_form, #claude_form, #makersuite_form').removeClass('tavern-api__native-provider');
-    }
+    // Never hide the host when the separate recovery control is unavailable.
+    $('#openai_api').toggleClass('tavern-api__hide-native', settings().showNativeApi === false && Boolean(document.getElementById('tavern_api_show_native')));
 }
 
 async function restoreInitialProfileSelection() {
@@ -3385,7 +3405,8 @@ async function teardownTavernApiDesk() {
     clearKeyEditor();
     closeDeskWorkspace();
     $('#tavern_api').remove();
-    $('#custom_form, #claude_form, #makersuite_form').removeClass('tavern-api__native-provider');
+    $('#tavern_api_extension_settings').remove();
+    $('#openai_api').removeClass('tavern-api__hide-native');
     $(document).off('.tavernApiDesk').off('.tavernApiDeskMenu').off('.apiDesk');
     $(window).off('.tavernApiDeskMenu');
     $(globalThis.visualViewport).off('.tavernApiDeskMenu');
@@ -3484,8 +3505,8 @@ async function confirmDeskDiscard() {
 }
 
 function renderDeskPersistence() {
-    $('#tavern_api_persistence').text({ saved: '设置已保存', pending: '正在保存设置…', error: '设置保存失败，请重试' }[settingsSaveState] || '').attr('data-state', settingsSaveState);
-    $('#tavern_api_retry_save').prop('hidden', settingsSaveState !== 'error');
+    $('#tavern_api_persistence, #tavern_api_settings_persistence').text({ saved: '设置已保存', pending: '正在保存设置…', error: '设置保存失败，请重试' }[settingsSaveState] || '').attr('data-state', settingsSaveState);
+    $('#tavern_api_retry_save, #tavern_api_settings_retry').prop('hidden', settingsSaveState !== 'error');
 }
 
 function renderDeskMeta() {
@@ -3629,6 +3650,7 @@ jQuery(() => {
     }
     if (document.getElementById('tavern_api')) return;
     $('#chat_completion_source').after(toolbarHtml());
+    mountExtensionSettings();
     $('#tavern_api_format').val(findFormatForCurrentSource() || 'openai');
     updatePanelVisibility();
     bindEvents();

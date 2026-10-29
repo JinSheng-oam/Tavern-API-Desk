@@ -11,6 +11,7 @@ import { runPresetRegressions } from './preset-regression.mjs';
 import { runModelSearchRegressions } from './model-search-regression.mjs';
 import { runDeskRegressions } from './desk-regression.mjs';
 import { runNativeImportRegressions } from './native-import-regression.mjs';
+import { runNativeVisibilityRegressions } from './native-visibility-regression.mjs';
 
 // Run from the plugin: node tests/regression.mjs
 // Override CHROME_PATH and ST_PUBLIC_DIR when the host/browser is elsewhere.
@@ -68,7 +69,7 @@ const assets = {
         + (await readFile(path.join(root, 'desk-view.js'), 'utf8')).replace(/^export /gm, '') + '\n'
         + (await readFile(path.join(root, 'platform.js'), 'utf8')).replace(/^export /gm, '') + '\n'
         + (await readFile(path.join(root, 'index.js'), 'utf8')).replace(/^import .*;\r?\n/gm, '').split('jQuery(() => {')[0]
-        + '\ninitializeSettings(); $("#chat_completion_source").after(toolbarHtml()); bindEvents(); renderProfiles(); watchForDomChanges(); window.fixtureReady = true;',
+        + '\n$("#chat_completion_source").before("<h4 id=fixture-native-heading>Native settings</h4>").after("<form id=custom_form><input id=fixture-native-input></form>"); initializeSettings(); $("#chat_completion_source").after(toolbarHtml()); mountExtensionSettings(); updatePanelVisibility(); bindEvents(); renderProfiles(); watchForDomChanges(); window.fixtureReady = true;',
 };
 const server = createServer(async (req, res) => {
     try {
@@ -77,6 +78,7 @@ const server = createServer(async (req, res) => {
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             let pageHtml = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/host.css"><link rel="stylesheet" href="/popup.css"><link rel="stylesheet" href="/plugin.css"><link rel="stylesheet" href="/fontawesome.css"><style>:root{--SmartThemeBlurTintColor:#20232b;--SmartThemeBodyColor:#eee;--SmartThemeBorderColor:#667;--SmartThemeQuoteColor:#9ad;--mainFontSize:16px;--mainFontFamily:Arial;--black30a:#0004}body{margin:0;padding:8px;overflow:auto;height:auto}#openai_api{display:block;max-width:700px}#native{display:none}</style></head><body><div id="openai_api"><select id="chat_completion_source"><option value="custom">Custom</option><option value="claude">Claude</option><option value="makersuite">Gemini</option>${scopedHost ? '<option value="custom_openai_responses">Responses</option><option value="custom_claude_messages">Messages</option><option value="custom_gemini_generate_content">GenerateContent</option><option value="custom_gemini_interactions">Interactions</option><option value="opencode">OpenCode</option>' : ''}</select></div><div id="native">${scopedHost ? '<select id="opencode_endpoint"><option value="zen">Zen</option><option value="go">Go</option></select><select id="opencode_api_format"><option value="openai_compat">Chat</option><option value="openai_responses">Responses</option><option value="claude_messages">Messages</option><option value="gemini">Gemini</option></select><select id="model_opencode_select"></select><input id="api_key_opencode">' : ''}<select id="settings_preset_openai"></select><button id="update_oai_preset">Update</button><button id="new_oai_preset">New</button><input id="custom_model_id"><input id="custom_api_url_text"><input id="openai_reverse_proxy"><input id="openai_proxy_password"><input id="custom_include_body"><input id="custom_exclude_body"><input id="custom_include_headers"><select id="model_claude_select"><option value="claude-model">Claude</option></select><select id="model_google_select"><option value="gemini-model">Gemini</option></select><button id="api_button_openai">Connect</button></div><script>const fixtureData=${JSON.stringify({ ...state.settings, host, presets: state.presets }).replace(/</g, '\\u003c')};</script><script src="/jquery.js"></script><script src="/fixture.js"></script><script src="/plugin.js"></script></body></html>`;
             if (url.pathname === '/preview') pageHtml = pageHtml.replace('<script src="/plugin.js"></script>', '<script type="module" src="/scripts/extensions/third-party/Tavern-API-Desk/index.js"></script>');
+            pageHtml = pageHtml.replace('<div id="openai_api">', '<div id="extensions_settings2"></div><div id="openai_api">');
             pageHtml = pageHtml.replace('<link rel="stylesheet" href="/fontawesome.css">', '<link rel="stylesheet" href="/fontawesome.css"><link rel="stylesheet" href="/solid.css">');
             res.end(pageHtml);
             return;
@@ -437,6 +439,7 @@ try {
     log('teardown restores fetch and leaves retained wrapper delegates safe');
 
     await other.evaluate('teardownTavernApiDesk()');
+    await runNativeVisibilityRegressions({ page: await newPage(), state, log });
     await runNativeImportRegressions({ page: await newPage(), state, log });
     await runParameterRegressions({ page: await newPage(), state, scopedHost, log });
     await runCompatibilityRegressions({ page: await newPage(), scopedHost, log });

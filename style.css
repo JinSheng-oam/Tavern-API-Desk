@@ -387,11 +387,28 @@
     opacity: 1;
 }
 
-/* 保留原生节点与事件，只隐藏三类来源的重复表单。 */
-#custom_form.tavern-api__native-provider,
-#claude_form.tavern-api__native-provider,
-#makersuite_form.tavern-api__native-provider {
+/* 隐藏原生显示内容，保留节点及其事件，API Desk 仍可使用。 */
+#openai_api.tavern-api__hide-native > :not(#tavern_api) {
     display: none !important;
+}
+
+.tavern-api__settings details {
+    padding: 0.5rem 0;
+}
+
+.tavern-api__settings summary {
+    cursor: pointer;
+}
+
+.tavern-api__settings .checkbox_label {
+    margin-top: 0.6rem;
+}
+
+.tavern-api__settings small,
+.tavern-api__settings-save {
+    display: block;
+    margin-top: 0.35rem;
+    opacity: 0.8;
 }
 
 .tavern-api__model-manager {
