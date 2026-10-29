@@ -418,6 +418,12 @@
     opacity: 0.8;
 }
 
+.tavern-api__post-processing-note {
+    color: var(--desk-muted, var(--SmartThemeBodyColor));
+    font-size: 0.75em;
+    line-height: 1.4;
+}
+
 .tavern-api__model-manager {
     display: flex;
     flex-direction: column;

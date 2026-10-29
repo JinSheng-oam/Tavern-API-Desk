@@ -177,6 +177,7 @@ async function fixtureGenerationData() {
     };
     const modelField = { custom: 'custom_model', claude: 'claude_model', makersuite: 'google_model', opencode: 'opencode_model' }[oai_settings.chat_completion_source];
     const data = { chat_completion_source: oai_settings.chat_completion_source,
+        custom_prompt_post_processing: oai_settings.custom_prompt_post_processing,
         custom_api_format: oai_settings.custom_api_format, custom_url: oai_settings.custom_url,
         opencode_endpoint: oai_settings.opencode_endpoint, opencode_api_format: oai_settings.opencode_api_format,
         reverse_proxy: oai_settings.reverse_proxy, model: oai_settings[modelField], temperature: 0.7, top_p: 0.9, top_k: 40,
@@ -189,6 +190,11 @@ async function fixtureGenerationData() {
 }
 $('#custom_model_id').val(oai_settings.custom_model);
 $('#chat_completion_source').val(oai_settings.chat_completion_source);
+$('#custom_prompt_post_processing').val(oai_settings.custom_prompt_post_processing ?? '').on('change', function () {
+    oai_settings.custom_prompt_post_processing = String($(this).val());
+    window.fixturePostProcessingUpdates = (window.fixturePostProcessingUpdates || 0) + 1;
+    saveSettingsDebounced();
+});
 for (const [name, i] of Object.entries(openai_setting_names)) $('#settings_preset_openai').append($('<option>').val(i).text(name));
 $('#settings_preset_openai').val(openai_setting_names[oai_settings.preset_settings_openai]);
 
@@ -199,6 +205,7 @@ async function switchTestPreset(name) {
     await eventSource.emit(event_types.OAI_PRESET_CHANGED_BEFORE, { presetName: name, preset });
     if (oai_settings.bind_preset_to_connection) {
         Object.assign(oai_settings, preset, { preset_settings_openai: name });
+        if (Object.hasOwn(preset, 'custom_prompt_post_processing')) $('#custom_prompt_post_processing').val(preset.custom_prompt_post_processing).trigger('input', { source: 'preset' });
         $('#chat_completion_source').val(oai_settings.chat_completion_source).trigger('change');
     }
     await eventSource.emit(event_types.OAI_PRESET_CHANGED_AFTER);

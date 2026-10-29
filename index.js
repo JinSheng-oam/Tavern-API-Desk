@@ -154,6 +154,7 @@ let quickActionMenu = null;
 let quickActionPopper = null;
 let quickActionPlacementPopup = null;
 let quickActionObserver = null;
+let nativePostProcessingObserver = null;
 let quickActionRenderPending = false;
 let quickUrlMenu = null;
 let quickUrlPortal = null;
@@ -519,6 +520,46 @@ function toolbarHtml() {
     return deskToolbar(formatOptions, keyExposureHelpHtml());
 }
 
+function syncNativePostProcessing() {
+    const target = document.getElementById('tavern_api_post_processing');
+    if (!target) return;
+    const native = document.getElementById('custom_prompt_post_processing');
+    target.replaceChildren();
+    if (!native) {
+        target.append(new Option('当前酒馆不提供此设置', ''));
+        target.disabled = true;
+        return;
+    }
+    // Copy labels and values from the installed host, including translations and
+    // provider-specific options, without duplicating its IDs or event handlers.
+    for (const child of native.children) {
+        if (child.tagName === 'OPTION') {
+            const option = new Option(child.textContent, child.value);
+            option.disabled = child.disabled;
+            target.add(option);
+        } else if (child.tagName === 'OPTGROUP') {
+            const group = document.createElement('optgroup');
+            group.label = child.label;
+            group.disabled = child.disabled;
+            for (const item of child.children) {
+                if (item.tagName !== 'OPTION') continue;
+                const option = new Option(item.textContent, item.value);
+                option.disabled = item.disabled;
+                group.append(option);
+            }
+            target.append(group);
+        }
+    }
+    const value = native.selectedIndex >= 0 ? native.value : String(oai_settings.custom_prompt_post_processing ?? '');
+    if (![...target.options].some(option => option.value === value)) {
+        const unavailable = new Option(`当前值：${value || '未指定'}（酒馆未提供此选项）`, value);
+        unavailable.disabled = true;
+        target.append(unavailable);
+    }
+    target.value = value;
+    target.disabled = native.disabled || $('#tavern_api').attr('aria-busy') === 'true';
+}
+
 function mountExtensionSettings() {
     const container = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
     if (!container || document.getElementById('tavern_api_extension_settings')) return;
@@ -814,6 +855,7 @@ function renderStatus(extraMessage = '') {
 function setOperationControlsDisabled(disabled) {
     $('#tavern_api select, #tavern_api input, #tavern_api textarea, #tavern_api button:not(#tavern_api_toggle):not(#tavern_api_expand)').prop('disabled', disabled);
     $('#tavern_api').attr('aria-busy', String(disabled));
+    if (!disabled) syncNativePostProcessing();
 }
 
 function setCredentialSafetyBlock(secretKey, message) {
@@ -2964,6 +3006,7 @@ function handleNativePresetChangeBefore({ presetName } = {}) {
 
 async function handleNativePresetChange() {
     if (extensionDisabled) return false;
+    syncNativePostProcessing();
     platform.syncParameterEditors();
     beginPresetTransition();
     const generation = ++profileSelectionGeneration;
@@ -3266,6 +3309,20 @@ function bindEvents() {
     });
     $('#tavern_api_new').on('click', async () => { if (await confirmDeskDiscard()) createProfile(); });
     bindDeskEvents();
+    syncNativePostProcessing();
+    const nativePostProcessing = document.getElementById('custom_prompt_post_processing');
+    if (nativePostProcessing) {
+        $(nativePostProcessing).on('input.tavernApiDesk change.tavernApiDesk', syncNativePostProcessing);
+        nativePostProcessingObserver = new MutationObserver(syncNativePostProcessing);
+        nativePostProcessingObserver.observe(nativePostProcessing, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['label', 'value', 'disabled'] });
+    }
+    $('#tavern_api_post_processing').on('change', function () {
+        const native = document.getElementById('custom_prompt_post_processing');
+        const option = this.selectedOptions[0];
+        if (!native || !option || option.disabled || option.parentElement?.disabled) return syncNativePostProcessing();
+        native.value = option.value;
+        $(native).trigger('change');
+    });
     $('#tavern_api_quick_url').on('click', toggleQuickUrlMenu);
     $('#tavern_api_additional_parameters').on('click', () => $('#customize_additional_parameters').trigger('click'));
     $('#tavern_api_save').on('click', () => void enqueueOperation(saveSelectedProfile));
@@ -3383,6 +3440,8 @@ async function teardownTavernApiDesk() {
     setOperationControlsDisabled(true);
     quickActionObserver?.disconnect();
     quickActionObserver = null;
+    nativePostProcessingObserver?.disconnect();
+    nativePostProcessingObserver = null;
     closeQuickActionMenu();
     closeQuickUrlMenu();
     quickActionPlacementPopup = null;
@@ -3419,7 +3478,7 @@ async function teardownTavernApiDesk() {
     $(document).off('.tavernApiDesk').off('.tavernApiDeskMenu').off('.apiDesk');
     $(window).off('.tavernApiDeskMenu');
     $(globalThis.visualViewport).off('.tavernApiDeskMenu');
-    $('#custom_api_url_text, #custom_model_id, #openai_reverse_proxy, #model_claude_select, #model_google_select, #model_opencode_select, #chat_completion_source').off('.tavernApiDesk');
+    $('#custom_api_url_text, #custom_model_id, #openai_reverse_proxy, #model_claude_select, #model_google_select, #model_opencode_select, #chat_completion_source, #custom_prompt_post_processing').off('.tavernApiDesk');
     eventSource.removeListener(event_types.CHATCOMPLETION_MODEL_CHANGED, handleNativeModelChange);
     eventSource.removeListener(event_types.OAI_PRESET_CHANGED_BEFORE, handleNativePresetChangeBefore);
     eventSource.removeListener(event_types.OAI_PRESET_CHANGED_AFTER, handleNativePresetChange);
