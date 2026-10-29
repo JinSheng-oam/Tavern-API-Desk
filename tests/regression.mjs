@@ -83,6 +83,7 @@ const server = createServer(async (req, res) => {
             pageHtml = pageHtml.replace('<div id="openai_api">', '<div id="extensions_settings2"></div><div id="rm_api_block"><div id="fixture_connection_manager" class="wide100p"><h3>API 连接配置</h3><select id="connection_profiles"><option>None</option></select></div><h3 id="title_api">API</h3><div id="fixture_api_container"><div id="main-API-selector-block"><select id="main_api"><option>聊天补全</option></select></div><div id="openai_api">');
             pageHtml = pageHtml.replace('<div id="native">', '</div><div id="fixture_api_footer"><input id="auto-connect-checkbox" type="checkbox"></div></div><div id="native">');
             pageHtml = pageHtml.replace('<link rel="stylesheet" href="/fontawesome.css">', '<link rel="stylesheet" href="/fontawesome.css"><link rel="stylesheet" href="/solid.css">');
+            if (process.env.API_DESK_TEST_THEME === 'light') pageHtml = pageHtml.replace('</head>', '<style>:root{--SmartThemeBlurTintColor:#f5ece4;--SmartThemeBodyColor:#302933;--SmartThemeBorderColor:#c7b6a9;--SmartThemeQuoteColor:#558679;--SmartThemeCheckboxTickColor:#f5ece4;--black30a:#0002}body{background:#f5ece4}</style></head>');
             res.end(pageHtml);
             return;
         }

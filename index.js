@@ -3582,6 +3582,7 @@ function renderDeskMeta() {
     const profile = selectedProfile();
     const storedActive = profiles().find(item => item.id === settings().activeProfileId);
     const active = storedActive && profileMatchesNative(storedActive, { includeModel: false }) ? storedActive : null;
+    $('.desk-current').attr('data-active', String(Boolean(active)));
     $('#tavern_api_active').text(active ? `${active.name} · ${oai_settings[FORMATS[active.format].modelField] || active.model || '未选择模型'}` : '尚未应用配置');
     $('#tavern_api_editor_title').text(profile?.name || '新建连接');
     $('#tavern_api_favorite').attr('aria-pressed', String(Boolean(profile?.favorite))).prop('disabled', !profile || pendingOperations > 0)
@@ -3598,8 +3599,11 @@ function renderDeskMeta() {
         const name = $('<strong>');
         if (item.favorite) name.append($('<i class="fa-solid fa-star desk-star" aria-hidden="true">'));
         name.append(document.createTextNode(item.name)); row.append(name);
-        if (item.id === active?.id) row.append($('<span class="desk-active">').text('使用中'));
-        row.append($('<small>').text(`${FORMATS[item.format].label} · ${item.model || '未选择模型'}`));
+        if (item.id === active?.id) row.append($('<span class="desk-active"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> 使用中</span>'));
+        const sub = $('<small>');
+        sub.append($('<span class="desk-format-tag">').text(FORMATS[item.format].label));
+        sub.append($('<span class="desk-model-tag">').text(item.model || '未选择模型'));
+        row.append(sub);
         root.append(row);
     }
     const selector = $('#tavern_api_profile_select');

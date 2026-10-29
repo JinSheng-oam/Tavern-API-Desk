@@ -77,6 +77,13 @@ export async function runDeskRegressions({ page, state, log, scopedHost, setView
 
     // Visual evidence uses representative synthetic content, with no credentials.
     await run(`extension_settings[MODULE_NAME]=structuredClone(portableBefore); renderProfiles('desk-main'); applyProfileById('desk-main')`);
+    if (process.env.API_DESK_CAPTURE_DIR) {
+        await setViewport(1440, 1000);
+        await run(`$('#openai_api').css('max-width','1300px'); window.layoutCaptureBefore=structuredClone(settings()); settings().profiles=[]; settings().selectedProfileId=null; settings().activeProfileId=null; renderProfiles()`);
+        await capture('inline-empty');
+        await run(`extension_settings[MODULE_NAME]=structuredClone(layoutCaptureBefore); renderProfiles('desk-main')`);
+        await capture('inline-populated');
+    }
     await run(`$('#tavern_api_expand').trigger('click'); new Promise(r=>setTimeout(r,30))`);
     assert.equal(await run('deskWorkspace.open'), true);
     assert.equal(await run(`document.activeElement.id`), 'tavern_api_search');
@@ -87,10 +94,24 @@ export async function runDeskRegressions({ page, state, log, scopedHost, setView
     await setViewport(1280, 1000);
     await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     assert.equal(await run(`document.documentElement.scrollWidth<=innerWidth`), true);
+    assert.deepEqual(await run(`(() => {
+        const rect = selector => document.querySelector(selector).getBoundingClientRect();
+        const buttons = [...document.querySelectorAll('.desk-imports .menu_button')];
+        return [Math.abs(rect('#tavern_api_name').top - rect('#tavern_api_format').top) < 2,
+            buttons.every(button => button.scrollWidth <= button.clientWidth + 1),
+            Math.abs(rect('#tavern_api_import_native').width - rect('#tavern_api_import_quicker').width) < 2,
+            Math.abs(rect('#tavern_api_export').width - rect('#tavern_api_import').width) < 2];
+    })()`), [true, true, true, true]);
     await capture('desktop');
     await setViewport(390, 844);
     await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     assert.equal(await run(`document.documentElement.scrollWidth<=innerWidth && deskWorkspace.scrollWidth<=deskWorkspace.clientWidth+1`), true);
+    assert.deepEqual(await run(`(() => {
+        const rect = selector => document.querySelector(selector).getBoundingClientRect();
+        return [rect('#tavern_api_format').top > rect('#tavern_api_name').bottom,
+            [...document.querySelectorAll('.desk-imports .menu_button')].every(button => button.scrollWidth <= button.clientWidth + 1),
+            rect('#tavern_api_save').width <= deskWorkspace.clientWidth];
+    })()`), [true, true, true]);
     await capture('mobile');
     await run(`deskWorkspace.dispatchEvent(new Event('cancel',{cancelable:true}));`);
     assert.equal(await run('deskWorkspace===null && document.getElementById("openai_api").contains(document.getElementById("tavern_api"))'), true);
