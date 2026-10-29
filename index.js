@@ -1439,7 +1439,10 @@ async function collectNativeImportCandidates(authoritative) {
             identity: importIdentity(format, endpoint, credential.identity, candidate.opencodeApiFormat),
             fingerprint: nativeImportFingerprint(candidate, format, endpoint),
         };
-        if (!candidates.some(item => item.identity === normalized.identity)) candidates.push(normalized);
+        // A Connection Manager entry is a distinct named configuration, even
+        // when another entry (or the current snapshot) shares its credentials.
+        if (candidate.sourceRef.startsWith('connection-manager:')
+            || !candidates.some(item => item.identity === normalized.identity)) candidates.push(normalized);
     };
 
     const activeCustom = authoritative[SECRET_KEYS.CUSTOM]?.find(entry => entry.active) || null;
@@ -1482,20 +1485,30 @@ async function collectNativeImportCandidates(authoritative) {
         ? extension_settings.connectionManager.profiles : [];
     const referencedProxyNames = new Set(managerProfiles.map(profile => profile?.proxy).filter(Boolean));
     const sourceFormats = { openai: 'openai', custom: 'openai', claude: 'anthropic', makersuite: 'gemini' };
-    for (const nativeProfile of managerProfiles) {
+    for (const nativeProfile of managerProfiles.slice().sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))) {
+        const sourceRef = `connection-manager:${normalizeText(nativeProfile?.id || nativeProfile?.name)}`;
         const protocol = nativeProfile?.['custom-api-format'] || 'openai_compat';
         const format = nativeProfile?.api === 'custom' ? (protocol === 'openai_compat' ? 'openai' : protocol) : sourceFormats[nativeProfile?.api];
-        if (!format || !isFormatSupported(format)) continue;
+        const proxyName = nativeProfile?.proxy === 'None' ? '' : nativeProfile?.proxy;
+        const proxy = proxyName ? proxies.find(item => item.name === proxyName) : null;
+        const unavailableReason = !format || !isFormatSupported(format)
+            ? `暂不支持的 API 类型或协议：${nativeProfile?.api || '未指定'}${nativeProfile?.api === 'custom' ? ` / ${protocol}` : ''}`
+            : proxyName && !proxy ? '找不到原配置绑定的反向代理预设'
+            : nativeProfile?.api === 'custom' && !normalizeText(proxy?.url || nativeProfile['api-url']) ? '原配置未保存 API 地址'
+            : '';
+        if (unavailableReason) {
+            candidates.push({ sourceRef, sourceLabel: '原生连接配置', name: sanitizeName(nativeProfile?.name) || '原生连接配置',
+                endpoint: normalizeText(proxy?.url || nativeProfile?.['api-url']), model: normalizeText(nativeProfile?.model), unavailableReason });
+            continue;
+        }
         const config = FORMATS[format];
-        const proxy = nativeProfile.proxy ? proxies.find(item => item.name === nativeProfile.proxy) : null;
         const endpoint = isCustomFormat(format)
             ? normalizeText(proxy?.url || nativeProfile['api-url'] || 'https://api.openai.com/v1')
             : normalizeText(proxy?.url || nativeProfile['api-url']);
         const proxyMode = usesProxyProfile(format, endpoint);
         const usesProxyCredential = Boolean(proxy?.url);
         await add({
-            sourceRef: `connection-manager:${normalizeText(nativeProfile.id || nativeProfile.name)}`,
-            sourceLabel: `Connection Manager (${nativeProfile.api})`, name: nativeProfile.name, format,
+            sourceRef, sourceLabel: '原生连接配置', name: nativeProfile.name, format,
             endpoint, model: nativeProfile.model, proxyPreset: proxyMode ? proxy?.name || '' : '',
             plainKey: usesProxyCredential ? proxy.password : '',
             // Any non-empty Anthropic/Gemini endpoint is a reverse proxy. If
@@ -1527,17 +1540,30 @@ async function collectNativeImportCandidates(authoritative) {
         );
         existing.add(importIdentity(profile.format, profile.endpoint, credential.identity, profile.opencodeApiFormat));
     }
-    return candidates.filter(candidate => !existing.has(candidate.identity) && !existingFingerprints.has(candidate.fingerprint));
+    const native = [];
+    const snapshots = [];
+    for (const candidate of candidates) {
+        if (candidate.sourceRef.startsWith('connection-manager:')) {
+            candidate.alreadyImported = Boolean(candidate.fingerprint && existingFingerprints.has(candidate.fingerprint));
+            native.push(candidate);
+        } else if (!existing.has(candidate.identity) && !existingFingerprints.has(candidate.fingerprint)) {
+            snapshots.push(candidate);
+        }
+    }
+    return [...native, ...snapshots];
 }
 
 function buildNativeImportPreview(candidates) {
     const content = $('<div class="tavern-api__model-manager tavern-api__migration">')
-        .append($('<div class="tavern-api__manager-note">').text('仅列出尚未存在的原生连接；选择后迁移，不修改原配置。'));
+        .append($('<div class="tavern-api__manager-note">').text('原生连接配置与当前连接快照分别列出。迁移地址、格式和模型；凭据尽量复用，无法读取时需手动补充。不迁移预设，原配置不会被修改。'));
     const list = $('<div class="tavern-api__model-list">');
     candidates.forEach((candidate, index) => {
-        const checkbox = $('<input type="checkbox">').attr('data-index', index);
+        const unavailable = candidate.unavailableReason || (candidate.alreadyImported ? '已导入' : '');
+        const checkbox = $('<input type="checkbox">').attr('data-index', index).prop('disabled', Boolean(unavailable));
         const details = $('<div class="tavern-api__migration-summary">')
-            .text(`${candidate.name} · ${candidate.endpoint || '官方端点'}`);
+            .append($('<div>').text(candidate.name))
+            .append($('<div class="tavern-api__migration-meta">').text(`${candidate.sourceLabel} · 模型：${candidate.model || '未指定'} · ${candidate.endpoint || '未指定地址'}`));
+        if (unavailable) details.append($('<div class="tavern-api__migration-meta">').text(unavailable));
         list.append($('<label class="tavern-api__model-item tavern-api__remote-model">').append(checkbox, details));
     });
     return content.append(list);
@@ -1571,7 +1597,7 @@ async function importNativeProfile() {
         animation: 'none',
     });
     if (!confirmed) return;
-    const indexes = preview.find('input[type="checkbox"]:checked').map((_, input) => Number(input.dataset.index)).get();
+    const indexes = preview.find('input[type="checkbox"]:checked:not(:disabled)').map((_, input) => Number(input.dataset.index)).get();
     if (!indexes.length) return;
 
     const baselineIds = {};

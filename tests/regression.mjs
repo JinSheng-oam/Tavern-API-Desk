@@ -10,6 +10,7 @@ import { runCompatibilityRegressions } from './compatibility-regression.mjs';
 import { runPresetRegressions } from './preset-regression.mjs';
 import { runModelSearchRegressions } from './model-search-regression.mjs';
 import { runDeskRegressions } from './desk-regression.mjs';
+import { runNativeImportRegressions } from './native-import-regression.mjs';
 
 // Run from the plugin: node tests/regression.mjs
 // Override CHROME_PATH and ST_PUBLIC_DIR when the host/browser is elsewhere.
@@ -436,6 +437,7 @@ try {
     log('teardown restores fetch and leaves retained wrapper delegates safe');
 
     await other.evaluate('teardownTavernApiDesk()');
+    await runNativeImportRegressions({ page: await newPage(), state, log });
     await runParameterRegressions({ page: await newPage(), state, scopedHost, log });
     await runCompatibilityRegressions({ page: await newPage(), scopedHost, log });
     await runPresetRegressions({ page: await newPage(), state, log });
