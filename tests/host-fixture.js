@@ -10,6 +10,13 @@ const secret_state = Object.fromEntries(Object.values(SECRET_KEYS).map(key => [k
 const proxies = [];
 const yaml = { parse: text => JSON.parse(text) }; // Test exclusions use the JSON subset of YAML.
 const scopedHost = fixtureData.host === 'tauritavern';
+// The host delegates inline drawer clicks to document, including extensions
+// inserted after startup. Keep the simulated host contract the same.
+$(document).on('click', '.inline-drawer-toggle', function () {
+    const drawer = $(this).closest('.inline-drawer');
+    drawer.children('.inline-drawer-content').toggle();
+    drawer.find('.inline-drawer-icon').toggleClass('fa-circle-chevron-down fa-circle-chevron-up down up');
+});
 function fixtureParameters(settings = oai_settings, source, { create = true } = {}) {
     source ??= settings.chat_completion_source === 'custom' && settings.custom_api_format !== 'openai_compat'
         ? `custom_${settings.custom_api_format}` : settings.chat_completion_source;

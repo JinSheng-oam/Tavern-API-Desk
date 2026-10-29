@@ -78,7 +78,8 @@ const server = createServer(async (req, res) => {
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             let pageHtml = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/host.css"><link rel="stylesheet" href="/popup.css"><link rel="stylesheet" href="/plugin.css"><link rel="stylesheet" href="/fontawesome.css"><style>:root{--SmartThemeBlurTintColor:#20232b;--SmartThemeBodyColor:#eee;--SmartThemeBorderColor:#667;--SmartThemeQuoteColor:#9ad;--mainFontSize:16px;--mainFontFamily:Arial;--black30a:#0004}body{margin:0;padding:8px;overflow:auto;height:auto}#openai_api{display:block;max-width:700px}#native{display:none}</style></head><body><div id="openai_api"><select id="chat_completion_source"><option value="custom">Custom</option><option value="claude">Claude</option><option value="makersuite">Gemini</option>${scopedHost ? '<option value="custom_openai_responses">Responses</option><option value="custom_claude_messages">Messages</option><option value="custom_gemini_generate_content">GenerateContent</option><option value="custom_gemini_interactions">Interactions</option><option value="opencode">OpenCode</option>' : ''}</select></div><div id="native">${scopedHost ? '<select id="opencode_endpoint"><option value="zen">Zen</option><option value="go">Go</option></select><select id="opencode_api_format"><option value="openai_compat">Chat</option><option value="openai_responses">Responses</option><option value="claude_messages">Messages</option><option value="gemini">Gemini</option></select><select id="model_opencode_select"></select><input id="api_key_opencode">' : ''}<select id="settings_preset_openai"></select><button id="update_oai_preset">Update</button><button id="new_oai_preset">New</button><input id="custom_model_id"><input id="custom_api_url_text"><input id="openai_reverse_proxy"><input id="openai_proxy_password"><input id="custom_include_body"><input id="custom_exclude_body"><input id="custom_include_headers"><select id="model_claude_select"><option value="claude-model">Claude</option></select><select id="model_google_select"><option value="gemini-model">Gemini</option></select><button id="api_button_openai">Connect</button></div><script>const fixtureData=${JSON.stringify({ ...state.settings, host, presets: state.presets }).replace(/</g, '\\u003c')};</script><script src="/jquery.js"></script><script src="/fixture.js"></script><script src="/plugin.js"></script></body></html>`;
             if (url.pathname === '/preview') pageHtml = pageHtml.replace('<script src="/plugin.js"></script>', '<script type="module" src="/scripts/extensions/third-party/Tavern-API-Desk/index.js"></script>');
-            pageHtml = pageHtml.replace('<div id="openai_api">', '<div id="extensions_settings2"></div><div id="openai_api">');
+            pageHtml = pageHtml.replace('<div id="openai_api">', '<div id="extensions_settings2"></div><div id="rm_api_block"><div id="fixture_connection_manager" class="wide100p"><h3>API 连接配置</h3><select id="connection_profiles"><option>None</option></select></div><h3 id="title_api">API</h3><div id="fixture_api_container"><div id="main-API-selector-block"><select id="main_api"><option>聊天补全</option></select></div><div id="openai_api">');
+            pageHtml = pageHtml.replace('<div id="native">', '</div><div id="fixture_api_footer"><input id="auto-connect-checkbox" type="checkbox"></div></div><div id="native">');
             pageHtml = pageHtml.replace('<link rel="stylesheet" href="/fontawesome.css">', '<link rel="stylesheet" href="/fontawesome.css"><link rel="stylesheet" href="/solid.css">');
             res.end(pageHtml);
             return;
@@ -439,7 +440,15 @@ try {
     log('teardown restores fetch and leaves retained wrapper delegates safe');
 
     await other.evaluate('teardownTavernApiDesk()');
-    await runNativeVisibilityRegressions({ page: await newPage(), state, log });
+    const visibilityPage = await newPage();
+    await runNativeVisibilityRegressions({ page: visibilityPage, state, log,
+        capture: async name => {
+            if (!process.env.API_DESK_CAPTURE_DIR) return;
+            await mkdir(process.env.API_DESK_CAPTURE_DIR, { recursive: true });
+            const result = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true }, visibilityPage.sessionId);
+            await writeFile(path.join(process.env.API_DESK_CAPTURE_DIR, `${name}.png`), Buffer.from(result.data, 'base64'));
+        },
+    });
     await runNativeImportRegressions({ page: await newPage(), state, log });
     await runParameterRegressions({ page: await newPage(), state, scopedHost, log });
     await runCompatibilityRegressions({ page: await newPage(), scopedHost, log });

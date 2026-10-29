@@ -388,16 +388,23 @@
 }
 
 /* 隐藏原生显示内容，保留节点及其事件，API Desk 仍可使用。 */
-#openai_api.tavern-api__hide-native > :not(#tavern_api) {
+#openai_api.tavern-api__hide-native > :not(#tavern_api),
+#rm_api_block.tavern-api__hide-native > :has(#connection_profiles),
+#rm_api_block.tavern-api__hide-native > #title_api,
+#rm_api_block.tavern-api__hide-native #main-API-selector-block,
+#rm_api_block.tavern-api__hide-native > :has(#auto-connect-checkbox) {
     display: none !important;
 }
 
-.tavern-api__settings details {
-    padding: 0.5rem 0;
+.tavern-api__settings .inline-drawer-header {
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    text-align: left;
 }
 
-.tavern-api__settings summary {
-    cursor: pointer;
+.tavern-api__settings [hidden] {
+    display: none !important;
 }
 
 .tavern-api__settings .checkbox_label {

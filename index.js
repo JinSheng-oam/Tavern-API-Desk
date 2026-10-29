@@ -523,15 +523,23 @@ function mountExtensionSettings() {
     const container = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
     if (!container || document.getElementById('tavern_api_extension_settings')) return;
     const section = $(`<div id="tavern_api_extension_settings" class="extension_container tavern-api__settings">
-        <details><summary><strong>API Desk</strong></summary>
+        <div class="inline-drawer">
+            <button class="inline-drawer-toggle inline-drawer-header" type="button" aria-expanded="false" aria-controls="tavern_api_extension_content">
+                <b>API Desk</b><span class="fa-solid fa-circle-chevron-down inline-drawer-icon down" aria-hidden="true"></span>
+            </button>
+            <div id="tavern_api_extension_content" class="inline-drawer-content">
             <label class="checkbox_label" for="tavern_api_show_native">
-                <input id="tavern_api_show_native" type="checkbox"><span>显示原生聊天补全 API 设置</span>
+                <input id="tavern_api_show_native" type="checkbox"><span>显示酒馆原生 API 设置</span>
             </label>
-            <small>关闭后保留 API Desk 工作台和主 API 选择，可随时在此重新显示原生设置。</small>
+            <small>关闭后隐藏原生连接配置、主 API 选择及聊天补全设置；可随时在此重新显示。</small>
             <div class="tavern-api__settings-save"><span id="tavern_api_settings_persistence" role="status" aria-live="polite"></span>
                 <button id="tavern_api_settings_retry" class="menu_button" type="button" hidden>重试保存</button></div>
-        </details></div>`);
+            </div>
+        </div></div>`);
     $(container).append(section);
+    section.find('.inline-drawer-toggle').on('click', function () {
+        $(this).attr('aria-expanded', String($(this).attr('aria-expanded') !== 'true'));
+    });
     section.find('#tavern_api_show_native').prop('checked', settings().showNativeApi).on('change', function () {
         settings().showNativeApi = this.checked;
         updatePanelVisibility();
@@ -3337,7 +3345,8 @@ function updatePanelVisibility() {
     $('#tavern_api').show();
     updateAdditionalParametersButton();
     // Never hide the host when the separate recovery control is unavailable.
-    $('#openai_api').toggleClass('tavern-api__hide-native', settings().showNativeApi === false && Boolean(document.getElementById('tavern_api_show_native')));
+    const hideNative = settings().showNativeApi === false && Boolean(document.getElementById('tavern_api_show_native'));
+    $('#openai_api, #rm_api_block').toggleClass('tavern-api__hide-native', hideNative);
 }
 
 async function restoreInitialProfileSelection() {
@@ -3406,7 +3415,7 @@ async function teardownTavernApiDesk() {
     closeDeskWorkspace();
     $('#tavern_api').remove();
     $('#tavern_api_extension_settings').remove();
-    $('#openai_api').removeClass('tavern-api__hide-native');
+    $('#openai_api, #rm_api_block').removeClass('tavern-api__hide-native');
     $(document).off('.tavernApiDesk').off('.tavernApiDeskMenu').off('.apiDesk');
     $(window).off('.tavernApiDeskMenu');
     $(globalThis.visualViewport).off('.tavernApiDeskMenu');
