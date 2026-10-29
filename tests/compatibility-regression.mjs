@@ -6,6 +6,9 @@ export async function runCompatibilityRegressions({ page, scopedHost, log }) {
     await run(`
         window.compatRequests = [];
         window.compatAllowExposure = false;
+        window.compatSettingsUnavailable = false;
+        window.compatFindMode = 'normal';
+        window.compatReadUnavailable = false;
         window.compatFailStatus = false;
         window.compatFailRestore = false;
         window.compatSecrets = Object.fromEntries(Object.values(FORMATS).map(c => [c.secretKey, [
@@ -17,9 +20,15 @@ export async function runCompatibilityRegressions({ page, scopedHost, log }) {
             const body = options.body ? JSON.parse(options.body) : {};
             compatRequests.push({url, body});
             const json = (data, status = 200) => new Response(JSON.stringify(data), {status, headers:{'Content-Type':'application/json'}});
-            if (url === '/api/secrets/settings') return json({allowKeysExposure: compatAllowExposure});
-            if (url === '/api/secrets/find') return compatAllowExposure ? json({value:'synthetic-key'}) : json({},403);
-            if (url === '/api/secrets/read') return json(compatSecrets);
+            if (url === '/api/secrets/settings') return compatSettingsUnavailable ? json({},503) : json({allowKeysExposure: compatAllowExposure});
+            if (url === '/api/secrets/find') {
+                if (!compatAllowExposure) return json({},403);
+                if (compatFindMode === 'error') return json({},500);
+                if (compatFindMode === 'empty') return json({value:''});
+                if (compatFindMode === 'missing') return json({},404);
+                return json({value:'synthetic-key'});
+            }
+            if (url === '/api/secrets/read') return compatReadUnavailable ? json({},503) : json(compatSecrets);
             if (url === '/api/secrets/rotate') {
                 if (compatFailRestore && body.id === 'original') return json({},500);
                 for (const entry of compatSecrets[body.key]) entry.active = entry.id === body.id;
@@ -192,7 +201,36 @@ export async function runCompatibilityRegressions({ page, scopedHost, log }) {
         assert.equal(await run(`compatRequests.some(r=>r.url==='/api/secrets/find')`), false);
         await run(`compatAllowExposure=true`);
         assert.equal(await run(`findSecretBounded('api_key_custom','bound')`), 'synthetic-key');
+        await run(`compatSecrets.api_key_custom.find(e=>e.id==='bound').value='synthetic-bound-from-state'; compatFindMode='error'; compatRequests=[]; messages.length=0`);
+        assert.equal(await run('readBoundSecret(compatCustom)'), 'synthetic-bound-from-state');
+        assert.equal(await run(`messages.some(item=>item.level==='warning')`), false);
+        assert.equal(await run(`compatRequests.some(r=>r.url==='/api/secrets/read')`), true);
+        await run(`clearKeyEditor(); revealBoundSecret()`);
+        assert.deepEqual(await run(`[$('#tavern_api_key_input').val(), $('#tavern_api_key_input').attr('type'), JSON.stringify(settings()).includes('synthetic-bound-from-state')]`), ['synthetic-bound-from-state', 'text', false]);
+        await run(`clearKeyEditor()`);
+        await run(`compatFindMode='empty'`);
+        assert.equal(await run('readBoundSecret(compatCustom)'), 'synthetic-bound-from-state');
+        await run(`compatFindMode='error'; compatSecrets.api_key_custom.find(e=>e.id==='bound').value='*******xyz'; messages.length=0`);
+        assert.equal(await run('readBoundSecret(compatCustom)'), null);
+        assert.match(await run(`messages.at(-1).message`), /读取绑定密钥失败/);
+        await run(`compatSecrets.api_key_custom.find(e=>e.id==='bound').value='synthetic-bound-from-state'`);
+        await run(`compatFindMode='missing'; compatCustom.secretId='missing-id'; messages.length=0`);
+        assert.equal(await run('readBoundSecret(compatCustom)'), null);
+        assert.match(await run(`messages.at(-1).message`), /找不到此配置绑定的密钥/);
+        assert.doesNotMatch(await run(`messages.at(-1).message`), /开启|允许显示密钥/);
+        await run(`compatCustom.secretId='bound'; compatFindMode='error'; compatReadUnavailable=true; messages.length=0`);
+        assert.equal(await run('readBoundSecret(compatCustom)'), null);
+        assert.match(await run(`messages.at(-1).message`), /读取绑定密钥失败/);
+        await run(`compatReadUnavailable=false; compatFindMode='normal'; compatSettingsUnavailable=true; compatRequests=[]; messages.length=0`);
+        assert.equal(await run(`findSecretBounded('api_key_custom','bound')`), null);
+        assert.equal(await run(`compatRequests.some(r=>r.url==='/api/secrets/find')`), false);
+        assert.equal(await run('readBoundSecret(compatCustom)'), 'synthetic-key');
+        await run(`compatSettingsUnavailable=false`);
+        log('TT confirms permission before exact-ID state fallback, reports missing keys and failures accurately, and allows an explicit lookup when permission status is unavailable');
         await run(`compatAllowExposure=false; compatRequests=[]`);
+        assert.equal(await run('readBoundSecret(compatCustom)'), null);
+        assert.equal(await run(`compatRequests.some(r=>r.url==='/api/secrets/find' || r.url==='/api/secrets/read')`), false);
+        await run(`compatRequests=[]`);
         log('TT denied exposure avoids find during save/reveal, and permission changes take effect without reload');
 
         assert.equal(await run(`$('#tavern_api_format option[value="opencode"]').length`), 1);

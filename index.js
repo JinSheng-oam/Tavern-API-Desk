@@ -1834,8 +1834,9 @@ async function deleteSelectedProfile() {
 
 async function findMatchingSecret(key, value) {
     if (!await canReadSecretPlaintext()) return { entry: null, exposureAvailable: false };
-    let readable = false;
-    for (const entry of getSecretEntries(key)) {
+    const entries = getSecretEntries(key);
+    let readable = entries.length === 0;
+    for (const entry of entries) {
         const existing = await findSecretBounded(key, entry.id);
         if (existing === null) continue;
         readable = true;
@@ -1896,7 +1897,7 @@ async function saveAndBindInputKey(profile = selectedProfile(), requestedFormat 
     profile.needsSecret = false;
     profile.updatedAt = new Date().toISOString();
     scheduleSettingsSave();
-    if (!result.exposureAvailable) toastr.warning('凭据已保存；findSecret 无权限，无法检查历史密钥是否同值。');
+    if (!result.exposureAvailable) toastr.warning('凭据已保存；暂时无法核对历史密钥是否相同。');
     return true;
 }
 
@@ -1913,13 +1914,17 @@ async function readBoundSecret(profile) {
         toastr.info('当前 Profile 未绑定密钥。');
         return null;
     }
-    const value = await findSecretBounded(FORMATS[profile.format].secretKey, profile.secretId);
-    if (value === null) {
-        toastr.warning(keyExposureGuidance().warning);
-        renderStatus('密钥明文不可读');
+    const result = await lookupSecretBounded(FORMATS[profile.format].secretKey, profile.secretId, { allowUnknownPermission: true });
+    if (result.status !== 'ok') {
+        const message = result.status === 'denied' ? keyExposureGuidance().warning
+            : result.status === 'missing' ? '找不到此配置绑定的密钥。请使用原生密钥管理检查，或重新填写并保存密钥。'
+            : result.status === 'permission-unavailable' ? '无法确认酒馆的密钥显示权限，请检查宿主连接后重试。'
+            : '读取绑定密钥失败，请检查酒馆连接及原生密钥管理后重试。';
+        toastr.warning(message);
+        renderStatus('无法读取绑定密钥');
         return null;
     }
-    return value;
+    return result.value;
 }
 
 async function revealBoundSecret() {
@@ -2008,32 +2013,58 @@ async function fetchJsonWithTimeout(resource, options, timeout = 15000) {
     }));
 }
 
-async function canReadSecretPlaintext() {
-    // Older SillyTavern releases do not expose this endpoint. Keep their existing
-    // find semantics; TT must preflight to avoid native permission-error toasts.
-    if (!platform.preferBackendModels) return true;
+async function secretExposureStatus() {
+    // Older SillyTavern releases do not expose this endpoint.
+    if (!platform.preferBackendModels) return 'unknown';
     try {
         const { response, data } = await fetchJsonWithTimeout('/api/secrets/settings', {
             method: 'POST', headers: getRequestHeaders(),
         });
-        return response.ok && data?.allowKeysExposure === true;
-    } catch { return false; }
+        if (!response.ok || typeof data?.allowKeysExposure !== 'boolean') return 'unknown';
+        return data.allowKeysExposure ? 'enabled' : 'disabled';
+    } catch { return 'unknown'; }
 }
 
-async function findSecretBounded(key, id) {
-    if (extensionDisabled || teardownPending || !await canReadSecretPlaintext()) return null;
+async function canReadSecretPlaintext() {
+    return !platform.preferBackendModels || await secretExposureStatus() === 'enabled';
+}
+
+async function lookupSecretBounded(key, id, { allowUnknownPermission = false } = {}) {
+    if (extensionDisabled || teardownPending) return { status: 'failed' };
+    const exposure = await secretExposureStatus();
+    if (exposure === 'disabled') return { status: 'denied' };
+    if (platform.preferBackendModels && exposure === 'unknown' && !allowUnknownPermission) return { status: 'permission-unavailable' };
+    let failure = exposure === 'unknown' && platform.preferBackendModels ? 'permission-unavailable' : 'failed';
     try {
         const { response, data } = await fetchJsonWithTimeout('/api/secrets/find', {
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({ key, id }),
         }, 15000);
-        if (!response.ok) return null;
-        return data?.value ?? null;
-    } catch (error) {
-        console.warn('[TavernApiDesk] Secret lookup failed or timed out:', key, error);
-        return null;
+        if (response.ok && typeof data?.value === 'string' && data.value) return { status: 'ok', value: data.value };
+        if (response.status === 403 && exposure !== 'enabled') failure = 'denied';
+        else if (response.status === 404 || (response.ok && data?.value === '')) failure = 'missing';
+    } catch { /* Check the authoritative binding before reporting a lookup failure. */ }
+
+    // TT exposes the actual value in its authoritative state only when the
+    // runtime permission is enabled. Match the exact ID; never use another
+    // active key or treat masked state as plaintext on other hosts.
+    if (platform.isTauriHost && exposure === 'enabled') {
+        const state = await readAuthoritativeSecretState();
+        if (!state) return { status: 'failed' };
+        const entry = state[key]?.find(item => item.id === id);
+        if (!entry) return { status: 'missing' };
+        if (typeof entry.value === 'string' && entry.value && !/^\*{7,}(?:[^*]{1,3})?$/.test(entry.value)) {
+            return { status: 'ok', value: entry.value };
+        }
+        return { status: 'failed' };
     }
+    return { status: failure };
+}
+
+async function findSecretBounded(key, id) {
+    const result = await lookupSecretBounded(key, id);
+    return result.status === 'ok' ? result.value : null;
 }
 
 async function fetchModelsForProfile(profile, endpoint) {
