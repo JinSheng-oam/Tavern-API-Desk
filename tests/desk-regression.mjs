@@ -18,7 +18,23 @@ export async function runDeskRegressions({ page, state, log, scopedHost, setView
     await run(`$('#tavern_api_favorites').trigger('click'); $('#tavern_api_filter').val('gemini').trigger('change')`);
     assert.equal(await run(`document.querySelector('.desk-profile').dataset.profileId`), 'desk-gemini');
     await run(`$('#tavern_api_filter').val('').trigger('change')`);
-    log('desk search combines endpoint and model terms; favorites and format filtering work without changing the live connection');
+    const beforeOrder = await run(`[...document.querySelectorAll('.desk-profile')].map(el => el.dataset.profileId)`);
+    await run(`(() => {
+        const items = [...document.querySelectorAll('.desk-profile')];
+        const first = items[0];
+        const second = items[1];
+        const handle = second.querySelector('.tavern-api__drag-handle');
+        const r1 = first.getBoundingClientRect();
+        const r2 = second.getBoundingClientRect();
+        handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, pointerType: 'mouse', clientX: r2.left + 10, clientY: r2.top + r2.height / 2 }));
+        second.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: r1.left + 10, clientY: r1.top + 2 }));
+        second.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: r1.left + 10, clientY: r1.top + 2 }));
+    })()`);
+    const afterOrder = await run(`[...document.querySelectorAll('.desk-profile')].map(el => el.dataset.profileId)`);
+    assert.equal(afterOrder[0], beforeOrder[1]);
+    assert.equal(afterOrder[1], beforeOrder[0]);
+    await run(`for (const p of profiles()) delete p.sortOrder; renderDeskMeta()`);
+    log('desk search combines endpoint and model terms; favorites, format filtering, and drag-and-drop sorting work without changing the live connection');
 
     await run(`$('#tavern_api_name').val('尚未保存的名称').trigger('input'); document.querySelector('[data-profile-id="desk-fallback"]').click()`);
     assert.equal(await run(`settings().selectedProfileId`), 'desk-main');

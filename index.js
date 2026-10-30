@@ -392,6 +392,7 @@ function normalizeProfile(raw) {
         // entries when their credential cannot be exposed across secret slots.
         nativeImportFingerprint: String(raw?.nativeImportFingerprint || '').slice(0, 5000),
         favorite: raw?.favorite === true,
+        ...(Number.isFinite(raw?.sortOrder) ? { sortOrder: Number(raw.sortOrder) } : {}),
         updatedAt: String(raw?.updatedAt || ''),
     };
 }
@@ -1392,8 +1393,152 @@ async function addCustomQuickUrl() {
     toastr.success(`已添加快捷 URL：${name}`);
 }
 
+function moveListItem(array, fromIndex, toIndex) {
+    if (!Array.isArray(array) || fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= array.length || toIndex >= array.length) return false;
+    const [moved] = array.splice(fromIndex, 1);
+    array.splice(toIndex, 0, moved);
+    return true;
+}
+
+function enableListDragSort(containerElement, itemSelector, onReorder) {
+    const container = containerElement?.jquery ? containerElement[0] : containerElement;
+    if (!container) return;
+    container._onDragSortReorder = onReorder;
+    if (container.dataset.dragSortBound === 'true') return;
+    container.dataset.dragSortBound = 'true';
+
+    const getItems = () => [...container.querySelectorAll(itemSelector)];
+    const clearIndicators = () => {
+        for (const item of getItems()) {
+            item.classList.remove('is-dragging', 'is-drop-before', 'is-drop-after');
+        }
+    };
+
+    container.addEventListener('keydown', event => {
+        if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+        const row = event.target.closest(itemSelector);
+        if (!row || !container.contains(row)) return;
+        const items = getItems();
+        const fromIndex = items.indexOf(row);
+        const toIndex = fromIndex + (event.key === 'ArrowUp' ? -1 : 1);
+        if (fromIndex < 0 || toIndex < 0 || toIndex >= items.length) return;
+        event.preventDefault();
+        event.stopPropagation();
+        container._onDragSortReorder?.(fromIndex, toIndex);
+    });
+
+    let activeDrag = null;
+    container.addEventListener('pointerdown', event => {
+        if (event.button !== 0 && event.pointerType === 'mouse') return;
+        const handle = event.target.closest('.tavern-api__drag-handle');
+        const interactive = !handle && event.target.closest('input, select, textarea, .tavern-api__item-actions button, .tavern-api__quick-item-actions button, .tavern-api__quick-url-delete');
+        if (interactive) return;
+        const row = event.target.closest(itemSelector);
+        if (!row || !container.contains(row) || row.disabled) return;
+        if (event.pointerType === 'touch' && !handle) return;
+        const items = getItems();
+        if (items.length < 2) return;
+        const fromIndex = items.indexOf(row);
+        if (fromIndex < 0) return;
+
+        activeDrag = {
+            pointerId: event.pointerId,
+            row,
+            fromIndex,
+            startX: event.clientX,
+            startY: event.clientY,
+            started: false,
+            fromHandle: Boolean(handle),
+            targetIndex: fromIndex,
+            placeAfter: false,
+        };
+        if (handle) event.preventDefault();
+    });
+
+    container.addEventListener('pointermove', event => {
+        if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+        const dy = Math.abs(event.clientY - activeDrag.startY);
+        const dx = Math.abs(event.clientX - activeDrag.startX);
+        if (!activeDrag.started) {
+            const threshold = activeDrag.fromHandle ? 3 : 6;
+            if (dy < threshold && (!activeDrag.fromHandle || dx < threshold)) return;
+            if (!activeDrag.fromHandle && dx > dy * 1.5) {
+                activeDrag = null;
+                return;
+            }
+            activeDrag.started = true;
+            activeDrag.row.classList.add('is-dragging');
+            try { activeDrag.row.setPointerCapture?.(event.pointerId); } catch {}
+        }
+        event.preventDefault();
+        const items = getItems();
+        for (const item of items) item.classList.remove('is-drop-before', 'is-drop-after');
+
+        const containerRect = container.getBoundingClientRect();
+        if (container.scrollHeight > container.clientHeight) {
+            const edge = 36;
+            if (event.clientY < containerRect.top + edge) container.scrollTop -= 8;
+            else if (event.clientY > containerRect.bottom - edge) container.scrollTop += 8;
+        }
+
+        let hoverIndex = -1;
+        let placeAfter = false;
+        for (let i = 0; i < items.length; i++) {
+            const rect = items[i].getBoundingClientRect();
+            if (event.clientY >= rect.top && event.clientY <= rect.bottom) {
+                hoverIndex = i;
+                placeAfter = event.clientY > rect.top + rect.height / 2;
+                break;
+            }
+        }
+        if (hoverIndex < 0 && items.length) {
+            if (event.clientY < items[0].getBoundingClientRect().top) {
+                hoverIndex = 0;
+                placeAfter = false;
+            } else if (event.clientY > items.at(-1).getBoundingClientRect().bottom) {
+                hoverIndex = items.length - 1;
+                placeAfter = true;
+            }
+        }
+        if (hoverIndex >= 0 && hoverIndex !== activeDrag.fromIndex) {
+            items[hoverIndex].classList.add(placeAfter ? 'is-drop-after' : 'is-drop-before');
+        }
+        activeDrag.targetIndex = hoverIndex;
+        activeDrag.placeAfter = placeAfter;
+    });
+
+    const finishPointerDrag = (event, cancelled = false) => {
+        if (!activeDrag || (event && event.pointerId !== activeDrag.pointerId)) return;
+        const state = activeDrag;
+        activeDrag = null;
+        try { state.row.releasePointerCapture?.(state.pointerId); } catch {}
+        clearIndicators();
+        if (!state.started || cancelled) return;
+
+        const suppressClick = clickEvent => {
+            clickEvent.preventDefault();
+            clickEvent.stopImmediatePropagation();
+        };
+        window.addEventListener('click', suppressClick, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', suppressClick, true), 0);
+
+        if (state.targetIndex < 0 || state.targetIndex === state.fromIndex) return;
+        let toIndex = state.targetIndex + (state.placeAfter ? 1 : 0);
+        if (state.fromIndex < toIndex) toIndex -= 1;
+        if (toIndex !== state.fromIndex) {
+            container._onDragSortReorder?.(state.fromIndex, toIndex);
+        }
+    };
+
+    container.addEventListener('pointerup', event => finishPointerDrag(event, false));
+    container.addEventListener('pointercancel', event => finishPointerDrag(event, true));
+}
+
 function quickUrlItem(item, custom = false) {
-    const row = $('<div class="tavern-api__quick-url-item" role="none">');
+    const row = $('<div class="tavern-api__quick-url-item" role="none">').toggleClass('is-custom', custom);
+    if (custom) {
+        row.append($('<span class="tavern-api__drag-handle" title="上下拖动调整顺序（支持 Alt+↑/↓）" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>'));
+    }
     const select = $('<button class="tavern-api__quick-url-select" type="button" role="menuitem">')
         .attr('title', item.url)
         .append($('<strong>').text(item.name), $('<small>').text(item.url))
@@ -1418,8 +1563,15 @@ function openQuickUrlMenu() {
     menu.append($('<div class="tavern-api__quick-url-heading">').text('SillyTavern 原生服务端点'));
     BUILTIN_QUICK_URLS.forEach(item => menu.append(quickUrlItem(item)));
     if (settings().quickUrls.length) {
-        menu.append($('<div class="tavern-api__quick-url-heading">').text('自定义'));
-        settings().quickUrls.forEach(item => menu.append(quickUrlItem(item, true)));
+        menu.append($('<div class="tavern-api__quick-url-heading">').text('自定义（可拖动排序）'));
+        const customList = $('<div class="tavern-api__quick-url-custom-list">');
+        settings().quickUrls.forEach(item => customList.append(quickUrlItem(item, true)));
+        enableListDragSort(customList, '.tavern-api__quick-url-item.is-custom', (fromIndex, toIndex) => {
+            if (!moveListItem(settings().quickUrls, fromIndex, toIndex)) return;
+            scheduleSettingsSave();
+            openQuickUrlMenu();
+        });
+        menu.append(customList);
     }
     menu.append($('<button class="tavern-api__quick-url-add" type="button" role="menuitem">')
         .append('<i class="fa-solid fa-plus"></i>', $('<span>').text('添加快捷 URL'))
@@ -2283,11 +2435,10 @@ async function manageCustomModels() {
         chosenList.empty();
         if (!draft.available.length) chosenList.append($('<div class="tavern-api__empty-state">').text('留存列表为空'));
         draft.available.forEach((model, index) => {
-            const input = $('<input class="text_pole" type="text" readonly>').val(model).attr('aria-label', `模型 ${model}`);
+            const handle = $('<span class="tavern-api__drag-handle" title="上下拖动调整顺序（支持 Alt+↑/↓）" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>');
+            const input = $('<input class="text_pole" type="text" readonly>').val(model).attr('aria-label', `模型 ${model}`).attr('title', '双击或点击编辑按钮可修改模型 ID');
             const edit = $('<button type="button" class="menu_button" title="编辑" aria-label="编辑"><i class="fa-solid fa-pen"></i></button>');
-            const remove = $('<button type="button" class="menu_button" title="删除" aria-label="删除"><i class="fa-solid fa-trash"></i></button>');
-            const up = $('<button type="button" class="menu_button" title="上移" aria-label="上移"><i class="fa-solid fa-arrow-up"></i></button>').prop('disabled', index === 0);
-            const down = $('<button type="button" class="menu_button" title="下移" aria-label="下移"><i class="fa-solid fa-arrow-down"></i></button>').prop('disabled', index === draft.available.length - 1);
+            const remove = $('<button type="button" class="menu_button tavern-api__delete-button" title="删除" aria-label="删除"><i class="fa-solid fa-trash"></i></button>');
             const commitEdit = () => {
                 const next = normalizeText(input.val());
                 if (!next || (next !== model && draft.available.includes(next))) return renderManager();
@@ -2296,9 +2447,10 @@ async function manageCustomModels() {
                 markCustomized();
                 renderManager();
             };
-            edit.on('click', () => input.prop('readonly', false).trigger('focus').trigger('select'));
-            input.on('keydown', event => {
-                if (event.key === 'Enter') commitEdit();
+            const beginEdit = () => input.prop('readonly', false).trigger('focus').trigger('select');
+            edit.on('click', beginEdit);
+            input.on('dblclick', beginEdit).on('keydown', event => {
+                if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); commitEdit(); }
                 if (event.key === 'Escape') renderManager();
             }).on('change', commitEdit);
             remove.on('click', () => {
@@ -2308,21 +2460,20 @@ async function manageCustomModels() {
                 markCustomized();
                 renderManager();
             });
-            up.on('click', () => {
-                [draft.available[index - 1], draft.available[index]] = [draft.available[index], draft.available[index - 1]];
-                markCustomized();
-                renderManager();
-            });
-            down.on('click', () => {
-                [draft.available[index + 1], draft.available[index]] = [draft.available[index], draft.available[index + 1]];
-                markCustomized();
-                renderManager();
-            });
-            const source = remote.has(model) ? '远端' : '自定义';
-            chosenList.append($('<div class="tavern-api__model-item tavern-api__chosen-model">').append(
-                $('<span class="tavern-api__drag-index">').text(index + 1), input, $('<small>').text(source),
-                $('<div class="tavern-api__item-actions">').append(edit, remove, up, down),
+            const isRemote = remote.has(model);
+            const source = isRemote ? '远端' : '自定义';
+            chosenList.append($('<div class="tavern-api__model-item tavern-api__chosen-model" tabindex="0">').append(
+                handle,
+                $('<span class="tavern-api__drag-index">').text(index + 1),
+                input,
+                $('<small class="tavern-api__model-source-tag">').attr('data-source', isRemote ? 'remote' : 'custom').text(source),
+                $('<div class="tavern-api__item-actions">').append(edit, remove),
             ));
+        });
+        enableListDragSort(chosenList, '.tavern-api__chosen-model', (fromIndex, toIndex) => {
+            if (!moveListItem(draft.available, fromIndex, toIndex)) return;
+            markCustomized();
+            renderManager();
         });
     };
 
@@ -2533,6 +2684,15 @@ async function manageQuickActions() {
     ownedPopups.add(popup);
     const selectAction = (id, force = false) => {
         if (!force && id === selectedId) return;
+        if (!force && id !== selectedId && detailDraft && JSON.stringify(detailDraft) !== detailBaseline) {
+            if (detailDraft.preset || detailDraft.profileId || detailDraft.model) {
+                const prevIndex = globalDraft.findIndex(item => item.id === selectedId);
+                if (prevIndex >= 0) {
+                    globalDraft[prevIndex] = normalizeQuickAction(structuredClone(detailDraft), prevIndex);
+                    toastr.info('已自动暂存上一方案的修改。');
+                }
+            }
+        }
         selectedId = id;
         const action = globalDraft.find(item => item.id === selectedId) || null;
         detailDraft = action ? structuredClone(action) : null;
@@ -2541,7 +2701,80 @@ async function manageQuickActions() {
         render();
     };
     const field = (label, control) => $('<label class="tavern-api__quick-field">').append($('<span>').text(label), control);
-    const updateDetailSaveState = () => editor.toggleClass('has-unsaved-detail', Boolean(detailDraft) && JSON.stringify(detailDraft) !== detailBaseline);
+    const quickActionSummaryTags = action => {
+        if (!action) return [];
+        const tags = [];
+        if (action.preset) tags.push({ icon: 'fa-sliders', text: action.preset });
+        if (action.profileId) {
+            const prof = profiles().find(item => item.id === action.profileId);
+            tags.push({ icon: 'fa-plug', text: prof ? prof.name : '未知配置' });
+        }
+        if (action.model) tags.push({ icon: 'fa-microchip', text: action.model });
+        return tags;
+    };
+    const updateSaveState = () => saveAll.toggleClass('is-dirty', JSON.stringify(globalDraft) !== initialGlobalSnapshot);
+    const renderListItems = () => {
+        listItems.empty();
+        if (!globalDraft.length) {
+            listItems.append($('<div class="tavern-api__empty-state">').text('暂无便捷方案，点击上方“新增方案”创建'));
+            return;
+        }
+        const hasUnsaved = Boolean(detailDraft) && JSON.stringify(detailDraft) !== detailBaseline;
+        globalDraft.forEach((action, index) => {
+            const isSelected = action.id === selectedId;
+            const previewSource = isSelected && detailDraft ? detailDraft : action;
+            const displayName = quickActionDisplayName(previewSource, index);
+            const row = $('<div class="tavern-api__quick-item" role="option" tabindex="0">')
+                .toggleClass('is-selected', isSelected)
+                .attr('aria-selected', isSelected);
+            const handle = $('<span class="tavern-api__drag-handle" title="上下拖动调整顺序（支持 Alt+↑/↓）" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>');
+            const main = $('<div class="tavern-api__quick-item-main">');
+            const titleRow = $('<div class="tavern-api__quick-item-header">');
+            const name = $('<span class="tavern-api__quick-select">').text(displayName).attr('title', displayName);
+            titleRow.append(name);
+            if (isSelected && hasUnsaved) {
+                titleRow.append($('<span class="tavern-api__quick-unsaved-pill">').text('待确认'));
+            }
+            const meta = $('<div class="tavern-api__quick-meta">');
+            const tags = quickActionSummaryTags(previewSource);
+            if (tags.length) {
+                for (const tag of tags) {
+                    meta.append($('<span class="tavern-api__quick-tag">').append($(`<i class="fa-solid ${tag.icon}" aria-hidden="true"></i>`), document.createTextNode(tag.text)));
+                }
+            } else {
+                meta.append($('<span class="tavern-api__quick-tag is-empty">').text('待选择预设 / 配置 / 模型'));
+            }
+            main.append(titleRow, meta);
+            const makeRowButton = (label, icon, disabled, handler, danger = false) => $('<button type="button" class="menu_button">')
+                .toggleClass('tavern-api__delete-button', danger).attr({ title: label, 'aria-label': label }).prop('disabled', disabled)
+                .append($(`<i class="fa-solid ${icon}"></i>`)).on('click', event => { event.stopPropagation(); handler(); });
+            const copy = makeRowButton('复制', 'fa-clone', false, () => {
+                const clone = normalizeQuickAction({ ...structuredClone(previewSource), id: makeId('quick-action'), name: `${displayName} 副本` }, index + 1);
+                globalDraft.splice(index + 1, 0, clone); selectAction(clone.id);
+            });
+            const remove = makeRowButton('删除', 'fa-trash', false, () => {
+                globalDraft.splice(index, 1);
+                selectAction(globalDraft[Math.min(index, globalDraft.length - 1)]?.id || '', true);
+            }, true);
+            const actionsWrap = $('<div class="tavern-api__quick-item-actions">').append(copy, remove);
+            row.append(handle, main, actionsWrap).on('click', () => selectAction(action.id)).on('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectAction(action.id); }
+            });
+            listItems.append(row);
+        });
+        enableListDragSort(listItems, '.tavern-api__quick-item', (fromIndex, toIndex) => {
+            if (!moveListItem(globalDraft, fromIndex, toIndex)) return;
+            globalDraft.forEach((item, idx) => { item.sequence = idx; });
+            renderListItems();
+            updateSaveState();
+        });
+    };
+    const updateDetailSaveState = () => {
+        const hasUnsaved = Boolean(detailDraft) && JSON.stringify(detailDraft) !== detailBaseline;
+        editor.toggleClass('has-unsaved-detail', hasUnsaved);
+        editor.find('.tavern-api__quick-dirty-badge').prop('hidden', !hasUnsaved);
+        renderListItems();
+    };
     const renderEditor = () => {
         editor.empty().removeClass('has-unsaved-detail');
         if (!detailDraft) {
@@ -2564,7 +2797,8 @@ async function manageQuickActions() {
         const modelControl = $('<div class="tavern-api__quick-model-control">').append(modelInput, modelSelect, fetchModels);
         const selectedProfileValue = () => profiles().find(item => item.id === detailDraft.profileId) || null;
         fetchModels.prop('disabled', !hasManagedModels(selectedProfileValue()?.format));
-        name.on('input', () => { detailDraft.name = sanitizeName(name.val()); updateDetailSaveState(); });
+        name.on('input', () => { detailDraft.name = sanitizeName(name.val()); updateDetailSaveState(); })
+            .on('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); saveScheme.trigger('click'); } });
         preset.on('change', () => { detailDraft.preset = normalizeText(preset.val()); updateDetailSaveState(); });
         profileSelect.on('change', () => {
             detailDraft.profileId = normalizeText(profileSelect.val());
@@ -2583,7 +2817,7 @@ async function manageQuickActions() {
             const exists = modelSelect.find('option').filter((_, option) => option.value === detailDraft.model).length;
             modelSelect.val(exists ? detailDraft.model : '');
             updateDetailSaveState();
-        });
+        }).on('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); saveScheme.trigger('click'); } });
         fetchModels.on('click', async () => {
             const profile = selectedProfileValue();
             if (!profile || !hasManagedModels(profile.format)) return toastr.info('请选择 API Profile 后拉取模型。');
@@ -2614,8 +2848,8 @@ async function manageQuickActions() {
             toastr.success(`通过${result.route}获取 ${result.models.length} 个模型；结果仅用于当前方案草稿。`);
             renderEditor();
         });
-        const saveScheme = $('<button type="button" class="menu_button tavern-api__save-button"><i class="fa-solid fa-floppy-disk"></i><span>保存方案</span></button>');
-        const cancelScheme = $('<button type="button" class="menu_button"><span>取消</span></button>');
+        const saveScheme = $('<button type="button" class="menu_button tavern-api__save-button"><i class="fa-solid fa-check"></i><span>保存方案</span></button>');
+        const cancelScheme = $('<button type="button" class="menu_button"><span>重置修改</span></button>');
         saveScheme.on('click', () => {
             if (!detailDraft.preset && !detailDraft.profileId && !detailDraft.model) return toastr.warning('方案至少需要 preset、Profile 或 model 中的一项。');
             const index = globalDraft.findIndex(item => item.id === selectedId);
@@ -2627,8 +2861,12 @@ async function manageQuickActions() {
             toastr.success('方案修改已保存；点击顶部“保存”后写入设置。');
         });
         cancelScheme.on('click', () => selectAction(selectedId, true));
+        const editorHeader = $('<h4 class="tavern-api__quick-editor-title">').append(
+            $('<span>').text('方案详情'),
+            $('<span class="tavern-api__quick-dirty-badge" hidden>').text('未确认修改'),
+        );
         editor.append(
-            $('<h4 class="tavern-api__quick-editor-title">').text('方案详情'),
+            editorHeader,
             $('<div class="tavern-api__quick-editor-fields">').append(
                 field('名称', name), field('预设', preset), field('配置', profileSelect), field('模型', modelControl),
             ),
@@ -2636,36 +2874,8 @@ async function manageQuickActions() {
         );
         updateDetailSaveState();
     };
-    const updateSaveState = () => saveAll.toggleClass('is-dirty', JSON.stringify(globalDraft) !== initialGlobalSnapshot);
     const render = () => {
-        listItems.empty();
-        globalDraft.forEach((action, index) => {
-            const row = $('<div class="tavern-api__quick-item" role="option" tabindex="0">')
-                .toggleClass('is-selected', action.id === selectedId)
-                .attr('aria-selected', action.id === selectedId);
-            const name = $('<span class="tavern-api__quick-select">').text(quickActionDisplayName(action, index)).attr('title', quickActionDisplayName(action, index));
-            const makeRowButton = (label, icon, disabled, handler, danger = false) => $('<button type="button" class="menu_button">')
-                .toggleClass('tavern-api__delete-button', danger).attr({ title: label, 'aria-label': label }).prop('disabled', disabled)
-                .append($(`<i class="fa-solid ${icon}"></i>`)).on('click', event => { event.stopPropagation(); handler(); });
-            const up = makeRowButton('上移', 'fa-arrow-up', index === 0, () => {
-                [globalDraft[index - 1], globalDraft[index]] = [globalDraft[index], globalDraft[index - 1]]; render();
-            });
-            const down = makeRowButton('下移', 'fa-arrow-down', index === globalDraft.length - 1, () => {
-                [globalDraft[index + 1], globalDraft[index]] = [globalDraft[index], globalDraft[index + 1]]; render();
-            });
-            const copy = makeRowButton('复制', 'fa-clone', false, () => {
-                const clone = normalizeQuickAction({ ...structuredClone(action), id: makeId('quick-action'), name: `${quickActionDisplayName(action, index)} 副本` }, index + 1);
-                globalDraft.splice(index + 1, 0, clone); selectAction(clone.id);
-            });
-            const remove = makeRowButton('删除', 'fa-trash', false, () => {
-                globalDraft.splice(index, 1);
-                selectAction(globalDraft[Math.min(index, globalDraft.length - 1)]?.id || '');
-            }, true);
-            row.append(name, up, down, copy, remove).on('click', () => selectAction(action.id)).on('keydown', event => {
-                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectAction(action.id); }
-            });
-            listItems.append(row);
-        });
+        renderListItems();
         renderEditor();
         updateSaveState();
     };
@@ -3628,6 +3838,7 @@ function renderDeskMeta() {
         const row = $('<button type="button" class="desk-profile">').attr('data-profile-id', item.id).attr('aria-current', String(item.id === profile?.id))
             .attr('title', `${item.name}\n${FORMATS[item.format].label}\n${item.endpoint || '官方端点'}\n${item.model || '未选择模型'}`).prop('disabled', pendingOperations > 0);
         const name = $('<strong>');
+        name.append($('<span class="tavern-api__drag-handle desk-profile__drag" title="上下拖动调整排序（支持 Alt+↑/↓）" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>'));
         if (item.favorite) name.append($('<i class="fa-solid fa-star desk-star" aria-hidden="true">'));
         name.append(document.createTextNode(item.name)); row.append(name);
         if (item.id === active?.id) row.append($('<span class="desk-active"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> 使用中</span>'));
@@ -3637,6 +3848,18 @@ function renderDeskMeta() {
         row.append(sub);
         root.append(row);
     }
+    enableListDragSort(root, '.desk-profile', (fromIndex, toIndex) => {
+        const ordered = filterDeskProfiles(profiles());
+        const movedItem = filtered[fromIndex];
+        const targetItem = filtered[toIndex];
+        if (!movedItem || !targetItem || movedItem.id === targetItem.id) return;
+        const fullFrom = ordered.findIndex(item => item.id === movedItem.id);
+        const fullTo = ordered.findIndex(item => item.id === targetItem.id);
+        if (!moveListItem(ordered, fullFrom, fullTo)) return;
+        ordered.forEach((item, idx) => { item.sortOrder = idx; });
+        scheduleSettingsSave();
+        renderDeskMeta();
+    });
     const selector = $('#tavern_api_profile_select');
     selector.empty().append($('<option>').val('').text('— 新建 API 配置 —'));
     // Keep the edited selection even when a filter excludes it. Searching never
@@ -3731,7 +3954,26 @@ function bindDeskEvents() {
     $('#tavern_api_filter').on('change', renderDeskMeta);
     $('#tavern_api_name').on('input', () => { renderStatus(); if (hasDeskDraftChanges()) setStatus('名称已修改，请保存并应用。', 'warning'); });
     $('#tavern_api_favorites').on('click', function () { $(this).attr('aria-pressed', String($(this).attr('aria-pressed') !== 'true')); renderDeskMeta(); });
-    $('#tavern_api_favorite').on('click', () => { const profile = selectedProfile(); if (profile) { profile.favorite = !profile.favorite; scheduleSettingsSave(); renderDeskMeta(); } });
+    $('#tavern_api_favorite').on('click', () => {
+        const profile = selectedProfile();
+        if (!profile) return;
+        profile.favorite = !profile.favorite;
+        if (profiles().some(item => Number.isFinite(item.sortOrder))) {
+            const ordered = filterDeskProfiles(profiles());
+            const fromIdx = ordered.findIndex(item => item.id === profile.id);
+            if (fromIdx >= 0) {
+                const [moved] = ordered.splice(fromIdx, 1);
+                if (profile.favorite) ordered.unshift(moved);
+                else {
+                    const lastFav = ordered.findLastIndex(item => item.favorite);
+                    ordered.splice(lastFav + 1, 0, moved);
+                }
+                ordered.forEach((item, idx) => { item.sortOrder = idx; });
+            }
+        }
+        scheduleSettingsSave();
+        renderDeskMeta();
+    });
     $('#tavern_api_list').on('click', '[data-profile-id]', function () { $('#tavern_api_profile_select').val(this.dataset.profileId).trigger('change'); });
     $('#tavern_api_apply').on('click', async () => { const profile = selectedProfile(); if (profile && await confirmDeskDiscard()) void applyProfileById(profile.id); });
     $('#tavern_api_expand').on('click', toggleDeskWorkspace);

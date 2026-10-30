@@ -141,11 +141,22 @@
     opacity: 0.72;
 }
 
+.tavern-api__quick-url-custom-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
 .tavern-api__quick-url-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: stretch;
+    align-items: center;
     gap: 0.2rem;
+}
+
+.tavern-api__quick-url-item.is-custom {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding-left: 0.2rem;
 }
 
 .tavern-api__quick-url-select,
@@ -571,13 +582,31 @@
 }
 
 .tavern-api__chosen-model {
-    grid-template-columns: 1.7rem minmax(7rem, 1fr) auto auto;
+    grid-template-columns: auto 1.55rem minmax(6rem, 1fr) auto auto;
 }
 
 .tavern-api__chosen-model > .text_pole[readonly] {
-    border-color: transparent;
-    background: transparent;
-    cursor: default;
+    border-color: transparent !important;
+    background: transparent !important;
+    cursor: pointer;
+    min-height: 30px;
+    padding: 2px 6px;
+}
+
+.tavern-api__model-source-tag {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--desk-fg, var(--SmartThemeBodyColor)) 7%, transparent);
+    border: 1px solid var(--desk-card-border, var(--SmartThemeBorderColor));
+    font-size: 0.74em;
+    font-weight: 500;
+    opacity: 0.85 !important;
+}
+
+.tavern-api__model-source-tag[data-source="custom"] {
+    background: color-mix(in srgb, var(--desk-accent, var(--SmartThemeQuoteColor)) 16%, transparent);
+    border-color: color-mix(in srgb, var(--desk-accent, var(--SmartThemeQuoteColor)) 45%, transparent);
 }
 
 .tavern-api__drag-index {
@@ -588,7 +617,8 @@
     border-radius: 50%;
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
     font-size: 0.78em;
-    opacity: 0.8;
+    font-weight: 600;
+    opacity: 0.85;
 }
 
 .tavern-api__item-actions {
@@ -698,7 +728,7 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     }
 
     .tavern-api__chosen-model {
-        grid-template-columns: 1.7rem minmax(0, 1fr) auto;
+        grid-template-columns: auto 1.55rem minmax(0, 1fr) auto;
     }
 
     .tavern-api__chosen-model > small {
@@ -706,7 +736,7 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     }
 
     .tavern-api__item-actions {
-        grid-column: 2 / -1;
+        grid-column: 4;
         justify-content: flex-end;
     }
 }
@@ -928,8 +958,10 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
 }
 
 .tavern-api__quick-header .tavern-api__save-button.is-dirty {
-    border-color: color-mix(in srgb, lightgreen 78%, var(--SmartThemeBorderColor));
-    background: color-mix(in srgb, lightgreen 10%, transparent);
+    border-color: var(--desk-success, #10b981) !important;
+    background: var(--desk-success-bg, color-mix(in srgb, #10b981 14%, transparent)) !important;
+    color: color-mix(in srgb, var(--desk-fg, var(--SmartThemeBodyColor)) 65%, #10b981) !important;
+    font-weight: 700;
 }
 
 .tavern-api__quick-columns {
@@ -937,7 +969,7 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
     min-width: 0;
     min-height: 0;
     flex: 1 1 auto;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
     grid-template-rows: minmax(0, 1fr);
     gap: 0.75rem;
     overflow: hidden;
@@ -949,16 +981,16 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
     min-height: 0;
     max-width: 100%;
     height: 100%;
-    padding: 0.6rem;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
+    padding: 0.65rem;
+    border: 1px solid var(--desk-card-border, var(--SmartThemeBorderColor));
+    border-radius: 10px;
+    background: var(--desk-card-bg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent));
 }
 
 .tavern-api__quick-list {
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
+    gap: 0.5rem;
     overflow: hidden;
 }
 
@@ -970,10 +1002,12 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
 .tavern-api__quick-list-toolbar .menu_button {
     display: inline-flex;
     width: 100%;
+    min-height: 36px;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
+    gap: 0.4rem;
     margin: 0;
+    font-weight: 600;
 }
 
 .tavern-api__quick-list-items {
@@ -981,59 +1015,148 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
     min-height: 0;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.38rem;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
+    padding: 2px;
 }
 
 .tavern-api__quick-item {
     display: grid;
     min-width: 0;
-    grid-template-columns: minmax(0, 1fr) repeat(4, 2.2rem);
-    gap: 0.25rem;
-    padding: 0.3rem;
-    border: 1px solid transparent;
-    border-radius: 7px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--desk-card-border, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--desk-bg, var(--SmartThemeBlurTintColor)) 94%, var(--desk-fg, #fff) 2%);
     cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .tavern-api__quick-item:hover,
-.tavern-api__quick-item:focus-visible,
-.tavern-api__quick-item.is-selected {
-    border-color: var(--SmartThemeQuoteColor);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+.tavern-api__quick-item:focus-visible {
+    border-color: color-mix(in srgb, var(--desk-fg, var(--SmartThemeBodyColor)) 26%, var(--SmartThemeBorderColor));
+    background: var(--desk-card-hover, color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent));
     outline: none;
 }
 
-.tavern-api__quick-item > .menu_button {
-    min-width: 2.2rem;
-    padding-inline: 0;
-    box-shadow: none !important;
-    filter: none !important;
-    transition: none !important;
+.tavern-api__quick-item.is-selected {
+    border-color: var(--desk-active-border, var(--SmartThemeQuoteColor));
+    background: var(--desk-active-bg, color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent));
+    box-shadow: inset 3px 0 0 var(--desk-accent, var(--SmartThemeQuoteColor));
+    outline: none;
+}
+
+.tavern-api__quick-item-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.22rem;
+}
+
+.tavern-api__quick-item-header {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 .tavern-api__quick-select {
     min-width: 0;
-    align-self: center;
+    font-weight: 600;
+    font-size: 0.92em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.tavern-api__quick-unsaved-pill,
+.tavern-api__quick-dirty-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--desk-warning-bg, color-mix(in srgb, #f59e0b 16%, transparent));
+    border: 1px solid var(--desk-warning-border, color-mix(in srgb, #f59e0b 45%, transparent));
+    color: color-mix(in srgb, var(--desk-fg, #eee) 68%, #d97706);
+    font-size: 0.72em;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.tavern-api__quick-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.tavern-api__quick-tag {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--desk-fg, var(--SmartThemeBodyColor)) 6%, transparent);
+    border: 1px solid var(--desk-card-border, transparent);
+    color: var(--desk-muted, inherit);
+    font-size: 0.74em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tavern-api__quick-tag i {
+    font-size: 0.88em;
+    opacity: 0.75;
+    flex-shrink: 0;
+}
+
+.tavern-api__quick-tag.is-empty {
+    border-style: dashed;
+    opacity: 0.65;
+}
+
+.tavern-api__quick-item-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+    flex-shrink: 0;
+}
+
+.tavern-api__quick-item-actions > .menu_button {
+    width: 1.95rem;
+    min-width: 1.95rem;
+    min-height: 1.95rem;
+    height: 1.95rem;
+    padding: 0;
+    box-shadow: none !important;
+    filter: none !important;
+    transition: none !important;
 }
 
 .tavern-api__quick-editor {
     display: flex;
     overflow: hidden;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0.55rem;
 }
 
 .tavern-api__quick-editor-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
     flex: 0 0 auto;
     margin: 0;
     padding-bottom: 0.45rem;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    border-bottom: 1px solid var(--desk-card-border, var(--SmartThemeBorderColor));
+    font-size: 0.96em;
 }
 
 .tavern-api__quick-editor-fields {
@@ -1053,13 +1176,15 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
     flex-wrap: wrap;
     justify-content: flex-end;
     margin-top: auto;
-    padding-top: 0.65rem;
-    border-top: 1px solid var(--SmartThemeBorderColor);
+    padding-top: 0.55rem;
+    border-top: 1px solid var(--desk-card-border, var(--SmartThemeBorderColor));
 }
 
 .tavern-api__quick-editor.has-unsaved-detail .tavern-api__quick-editor-actions .tavern-api__save-button {
-    border-color: color-mix(in srgb, lightgreen 78%, var(--SmartThemeBorderColor));
-    background: color-mix(in srgb, lightgreen 10%, transparent);
+    border-color: var(--desk-success, #10b981) !important;
+    background: var(--desk-success-bg, color-mix(in srgb, #10b981 16%, transparent)) !important;
+    color: color-mix(in srgb, var(--desk-fg, var(--SmartThemeBodyColor)) 65%, #10b981) !important;
+    font-weight: 700;
 }
 
 .tavern-api__quick-field {
@@ -1067,11 +1192,13 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
     min-width: 0;
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
-    gap: 0.25rem;
+    gap: 0.28rem;
 }
 
 .tavern-api__quick-field > span {
+    font-size: 0.84em;
     font-weight: 600;
+    color: color-mix(in srgb, var(--desk-fg, var(--SmartThemeBodyColor)) 88%, transparent);
 }
 
 .tavern-api__quick-field > .text_pole,
@@ -1423,30 +1550,38 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 
 /* Workspace overrides must follow inherited plugin rules. */
 /* SPDX-License-Identifier: GPL-3.0-only. The host theme is the visual authority. */
-.tavern-api {
+.tavern-api,
+.tavern-api__quick-manager,
+.tavern-api__model-manager,
+.tavern-api__placement-popup,
+.tavern-api__quick-url-menu {
     --desk-fg: var(--SmartThemeBodyColor, #eeeef0);
     --desk-bg: var(--SmartThemeBlurTintColor, #20232b);
     --desk-line: var(--SmartThemeBorderColor, #626570);
     --desk-accent: var(--SmartThemeQuoteColor, #c8d4c2);
     --desk-muted: color-mix(in srgb, var(--desk-fg) 70%, var(--desk-bg));
-    --desk-subtle: color-mix(in srgb, var(--desk-fg) 68%, var(--desk-bg));
-    --desk-card-bg: color-mix(in srgb, var(--desk-fg) 3%, var(--desk-bg));
-    --desk-card-hover: color-mix(in srgb, var(--desk-fg) 6.5%, var(--desk-bg));
-    --desk-card-border: color-mix(in srgb, var(--desk-line) 40%, transparent);
-    --desk-active-bg: color-mix(in srgb, var(--desk-accent) 12%, var(--desk-bg));
-    --desk-active-border: color-mix(in srgb, var(--desk-accent) 55%, var(--desk-line));
+    --desk-subtle: color-mix(in srgb, var(--desk-fg) 56%, var(--desk-bg));
+    --desk-card-bg: color-mix(in srgb, var(--desk-fg) 3.5%, var(--desk-bg));
+    --desk-card-hover: color-mix(in srgb, var(--desk-fg) 7%, var(--desk-bg));
+    --desk-card-border: color-mix(in srgb, var(--desk-fg) 14%, color-mix(in srgb, var(--desk-line) 45%, transparent));
+    --desk-input-bg: color-mix(in srgb, var(--desk-fg) 4.5%, var(--desk-bg));
+    --desk-input-border: color-mix(in srgb, var(--desk-fg) 18%, color-mix(in srgb, var(--desk-line) 50%, transparent));
+    --desk-active-bg: color-mix(in srgb, var(--desk-accent) 14%, var(--desk-bg));
+    --desk-active-border: color-mix(in srgb, var(--desk-accent) 62%, var(--desk-line));
     --desk-success: #10b981;
-    --desk-success-bg: color-mix(in srgb, #10b981 12%, var(--desk-bg));
-    --desk-success-border: color-mix(in srgb, #10b981 35%, transparent);
+    --desk-success-bg: color-mix(in srgb, #10b981 13%, var(--desk-bg));
+    --desk-success-border: color-mix(in srgb, #10b981 42%, transparent);
     --desk-warning: #f59e0b;
-    --desk-warning-bg: color-mix(in srgb, #f59e0b 12%, var(--desk-bg));
-    --desk-warning-border: color-mix(in srgb, #f59e0b 35%, transparent);
+    --desk-warning-bg: color-mix(in srgb, #f59e0b 14%, var(--desk-bg));
+    --desk-warning-border: color-mix(in srgb, #f59e0b 45%, transparent);
     --desk-danger: #ef4444;
     --desk-danger-bg: color-mix(in srgb, #ef4444 12%, var(--desk-bg));
-    --desk-danger-border: color-mix(in srgb, #ef4444 35%, transparent);
+    --desk-danger-border: color-mix(in srgb, #ef4444 38%, transparent);
     --desk-radius-sm: 6px;
     --desk-radius-md: 8px;
     --desk-radius-lg: 12px;
+}
+.tavern-api {
     color: var(--desk-fg);
     background: var(--desk-bg);
     padding: 16px;
@@ -1460,18 +1595,119 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
     min-width: 0;
 }
 .tavern-api *, .desk-workspace * { box-sizing: border-box; }
-.tavern-api [hidden] { display: none !important; }
+.tavern-api [hidden], .tavern-api__quick-manager [hidden] { display: none !important; }
 .tavern-api ::selection { background: var(--desk-accent); color: var(--desk-bg); }
 .tavern-api :is(input, textarea) { caret-color: var(--desk-accent); }
 .tavern-api :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--desk-accent); outline-offset: 2px; }
 .tavern-api :is(button, input, select):disabled { opacity: .45; cursor: wait; }
 .tavern-api :is(input, select, textarea) { color: inherit; font: inherit; max-width: 100%; }
-.tavern-api .text_pole { margin: 0; min-height: 40px; border: 1px solid var(--desk-card-border); border-radius: var(--desk-radius-sm); background: color-mix(in srgb, var(--desk-fg) 7%, var(--desk-bg)); padding: 7px 11px; font-size: .88em; transition: border-color .15s ease, box-shadow .15s ease; }
-.tavern-api .text_pole:focus { border-color: var(--desk-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--desk-accent) 25%, transparent); outline: none; }
-.tavern-api input::placeholder { color: var(--desk-subtle); opacity: 1; }
-.tavern-api .menu_button { min-height: 38px; margin: 0; padding: 7px 11px; gap: 7px; border-radius: var(--desk-radius-sm); border: 1px solid var(--desk-card-border); background: var(--desk-card-bg); font: inherit; line-height: 1.25; display: inline-flex; align-items: center; justify-content: center; touch-action: manipulation; cursor: pointer; transition: background-color .15s ease, border-color .15s ease, transform .1s ease; }
-.tavern-api .menu_button:hover:not(:disabled) { background: var(--desk-card-hover); border-color: color-mix(in srgb, var(--desk-line) 75%, transparent); }
+.tavern-api .text_pole,
+:is(.tavern-api__quick-manager, .tavern-api__model-manager) .text_pole {
+    box-sizing: border-box;
+    margin: 0;
+    min-height: 38px;
+    border: 1px solid var(--desk-input-border);
+    border-radius: var(--desk-radius-sm);
+    background: var(--desk-input-bg);
+    color: var(--desk-fg);
+    padding: 6px 11px;
+    font-size: .88em;
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+.tavern-api .text_pole { min-height: 40px; padding: 7px 11px; }
+.tavern-api .text_pole:hover:not(:disabled):not([readonly]),
+:is(.tavern-api__quick-manager, .tavern-api__model-manager) .text_pole:hover:not(:disabled):not([readonly]) {
+    border-color: color-mix(in srgb, var(--desk-fg) 30%, var(--desk-line));
+}
+.tavern-api .text_pole:focus:not([readonly]),
+:is(.tavern-api__quick-manager, .tavern-api__model-manager) .text_pole:focus:not([readonly]) {
+    border-color: var(--desk-accent);
+    background: var(--desk-bg);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--desk-accent) 25%, transparent);
+    outline: none;
+}
+:is(.tavern-api, .tavern-api__quick-manager, .tavern-api__model-manager) input::placeholder { color: var(--desk-subtle); opacity: 1; }
+.tavern-api .menu_button,
+:is(.tavern-api__quick-manager, .tavern-api__model-manager, .tavern-api__placement-popup) .menu_button {
+    min-height: 36px;
+    margin: 0;
+    padding: 6px 11px;
+    gap: 6px;
+    border-radius: var(--desk-radius-sm);
+    border: 1px solid var(--desk-card-border);
+    background: var(--desk-card-bg);
+    color: var(--desk-fg);
+    font: inherit;
+    line-height: 1.25;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, transform .1s ease;
+}
+.tavern-api .menu_button { min-height: 38px; padding: 7px 11px; gap: 7px; }
+.tavern-api .menu_button:hover:not(:disabled),
+:is(.tavern-api__quick-manager, .tavern-api__model-manager, .tavern-api__placement-popup) .menu_button:hover:not(:disabled) {
+    background: var(--desk-card-hover);
+    border-color: color-mix(in srgb, var(--desk-fg) 26%, var(--desk-line));
+}
 .tavern-api .desk-icon { width: 38px; min-height: 38px; flex: 0 0 38px; padding: 0; }
+.tavern-api__drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 24px;
+    flex: 0 0 20px;
+    border-radius: 4px;
+    color: var(--desk-subtle);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    transition: color .15s ease, background-color .15s ease;
+}
+.tavern-api__drag-handle:hover {
+    color: var(--desk-fg);
+    background: color-mix(in srgb, var(--desk-fg) 8%, transparent);
+}
+.tavern-api__drag-handle:active,
+.is-dragging .tavern-api__drag-handle {
+    cursor: grabbing;
+    color: var(--desk-accent);
+}
+.desk-profile__drag {
+    width: 16px;
+    height: 18px;
+    flex: 0 0 16px;
+    margin-left: -2px;
+    margin-right: 2px;
+    font-size: .82em;
+    opacity: .65;
+}
+.desk-profile:hover .desk-profile__drag { opacity: 1; }
+:is(.desk-profile, .tavern-api__quick-item, .tavern-api__chosen-model, .tavern-api__quick-url-item) { position: relative; }
+:is(.desk-profile, .tavern-api__quick-item, .tavern-api__chosen-model, .tavern-api__quick-url-item).is-dragging {
+    opacity: .55;
+    border-style: dashed !important;
+    border-color: var(--desk-accent) !important;
+    background: var(--desk-active-bg) !important;
+}
+:is(.desk-profile, .tavern-api__quick-item, .tavern-api__chosen-model, .tavern-api__quick-url-item).is-drop-before::before,
+:is(.desk-profile, .tavern-api__quick-item, .tavern-api__chosen-model, .tavern-api__quick-url-item).is-drop-after::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--desk-accent);
+    box-shadow: 0 0 6px var(--desk-accent);
+    pointer-events: none;
+    z-index: 5;
+}
+:is(.desk-profile, .tavern-api__quick-item, .tavern-api__chosen-model, .tavern-api__quick-url-item).is-drop-before::before { top: -3px; }
+:is(.desk-profile, .tavern-api__quick-item, .tavern-api__chosen-model, .tavern-api__quick-url-item).is-drop-after::after { bottom: -3px; }
 .tavern-api__title { margin-bottom: 14px; gap: 8px; display: flex; align-items: center; justify-content: space-between; }
 .tavern-api__brand { font-size: 1.08em; font-weight: 650; letter-spacing: -.01em; display: inline-flex; align-items: center; }
 .tavern-api__brand-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: color-mix(in srgb, var(--desk-accent) 18%, var(--desk-bg)); color: var(--desk-accent); margin-right: 8px; font-size: .85em; flex-shrink: 0; }
@@ -1487,22 +1723,22 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 .desk-list-heading strong { font-size: .92em; font-weight: 650; }
 .desk-editor-heading h3 { margin: 0; color: inherit; font-size: 1.15em; font-weight: 700; overflow-wrap: anywhere; }
 .desk-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--desk-fg) 8%, var(--desk-bg)); color: var(--desk-muted); font-size: .75em; font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 6px; }
-.desk-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; min-height: 38px; border: 1px solid var(--desk-card-border); border-radius: var(--desk-radius-sm); background: var(--desk-card-bg); transition: border-color .15s ease, box-shadow .15s ease; }
+.desk-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; min-height: 38px; border: 1px solid var(--desk-input-border); border-radius: var(--desk-radius-sm); background: var(--desk-input-bg); transition: border-color .15s ease, box-shadow .15s ease; }
 .desk-search i { color: var(--desk-subtle); font-size: .85em; }
 .desk-search input { border: 0; outline: none; background: transparent; width: 100%; min-width: 0; padding: 6px 0; color: inherit; font: inherit; font-size: .86em; }
-.desk-search:focus-within { border-color: var(--desk-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--desk-accent) 25%, transparent); }
+.desk-search:focus-within { border-color: var(--desk-accent); background: var(--desk-bg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--desk-accent) 25%, transparent); }
 .tavern-api .desk-search input:focus-visible { outline: none; }
 .desk-filters { display: flex; align-items: center; gap: 6px; margin: 8px 0 12px; }
 .desk-filters select { min-width: 0; flex: 1; min-height: 36px; border-radius: var(--desk-radius-sm); font-size: .82em !important; }
 .desk-filters #tavern_api_favorites { min-height: 36px; width: 36px; flex: 0 0 36px; }
 .desk-filters [aria-pressed=true], #tavern_api_favorite[aria-pressed=true] { color: #f59e0b; background: color-mix(in srgb, #f59e0b 14%, var(--desk-bg)); border-color: color-mix(in srgb, #f59e0b 45%, transparent); }
-.desk-profile-list { display: flex; flex-direction: column; max-height: 390px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--desk-card-border) transparent; gap: 4px; padding-right: 2px; }
+.desk-profile-list { display: flex; flex-direction: column; max-height: 390px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--desk-card-border) transparent; gap: 5px; padding: 3px 2px; }
 .desk-profile { position: relative; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 10px 12px; border: 1px solid var(--desk-card-border); border-radius: var(--desk-radius-md); background: var(--desk-card-bg); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: all .15s ease; }
-.desk-profile:hover { background: var(--desk-card-hover); border-color: color-mix(in srgb, var(--desk-line) 75%, transparent); transform: translateY(-1px); }
-.desk-profile[aria-current=true] { background: var(--desk-active-bg); border-color: var(--desk-active-border); box-shadow: inset 3px 0 0 var(--desk-accent), 0 2px 6px rgba(0, 0, 0, .15); }
+.desk-profile:hover { background: var(--desk-card-hover); border-color: color-mix(in srgb, var(--desk-fg) 26%, var(--desk-line)); transform: translateY(-1px); }
+.desk-profile[aria-current=true] { background: var(--desk-active-bg); border-color: var(--desk-active-border); box-shadow: inset 3px 0 0 var(--desk-accent), 0 2px 6px rgba(0, 0, 0, .12); }
 .desk-profile strong, .desk-profile small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-profile strong { font-size: .9em; font-weight: 600; display: flex; align-items: center; gap: 4px; }
-.desk-profile small { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--desk-muted); font-size: .75em; margin-top: 3px; }
+.desk-profile small { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--desk-muted); font-size: .75em; margin-top: 3px; padding-left: 18px; }
 .desk-format-tag { display: inline-block; padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--desk-fg) 7%, var(--desk-bg)); border: 1px solid var(--desk-card-border); font-size: .88em; font-weight: 500; flex-shrink: 0; }
 .desk-model-tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-profile .desk-active { align-self: center; font-size: .7em; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--desk-success-bg); color: color-mix(in srgb, var(--desk-fg) 70%, var(--desk-success)); border: 1px solid var(--desk-success-border); display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
@@ -1530,7 +1766,7 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 .tavern-api .tavern-api__key-row { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 0; }
 .tavern-api .tavern-api__key-row > #tavern_api_key_input { min-width: 0; flex: 1 1 100px; width: 0; border-radius: var(--desk-radius-sm) 0 0 var(--desk-radius-sm); border-right: none; }
 .tavern-api .tavern-api__key-actions { display: flex; align-items: stretch; flex-wrap: nowrap; gap: 0; position: relative; }
-.tavern-api .tavern-api__key-actions .desk-icon { width: 34px; min-height: 40px; padding: 0; border-radius: 0; border: 1px solid var(--desk-card-border); border-left: 1px solid var(--desk-card-border); background: var(--desk-card-bg); margin: 0; }
+.tavern-api .tavern-api__key-actions .desk-icon { width: 34px; min-height: 40px; padding: 0; border-radius: 0; border: 1px solid var(--desk-input-border); border-left: 1px solid var(--desk-input-border); background: var(--desk-card-bg); margin: 0; }
 .tavern-api .tavern-api__key-actions > :last-child { border-radius: 0 var(--desk-radius-sm) var(--desk-radius-sm) 0; }
 .tavern-api .tavern-api__key-actions .desk-icon:hover { background: var(--desk-card-hover); color: var(--desk-accent); }
 .desk-key-note { margin: 7px 0 0; color: var(--desk-subtle); font-size: .75em; display: flex; align-items: center; gap: 5px; }
@@ -1550,14 +1786,14 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 .tavern-api__post-processing-note { display: block; margin-top: 4px; font-size: .75em; color: var(--desk-subtle); }
 .desk-footer { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--desk-card-border); padding-top: 14px; margin-top: 14px; align-items: center; }
 .tavern-api .desk-primary { background: var(--desk-accent); color: var(--desk-bg); border: 1px solid var(--desk-accent); font-weight: 700; font-size: .92em; flex: 1 1 150px; min-height: 40px; border-radius: var(--desk-radius-sm); box-shadow: 0 2px 8px color-mix(in srgb, var(--desk-accent) 25%, transparent); cursor: pointer; transition: all .15s cubic-bezier(.16, 1, .3, 1); }
-.tavern-api .desk-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 14px color-mix(in srgb, var(--desk-accent) 35%, transparent); }
+.tavern-api .desk-primary:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 14px color-mix(in srgb, var(--desk-accent) 35%, transparent); }
 .tavern-api .desk-primary:active:not(:disabled) { transform: translateY(0); filter: brightness(.96); }
 .tavern-api #tavern_api_apply { min-height: 40px; font-weight: 600; font-size: .85em; padding: 8px 14px; }
 .desk-danger { color: var(--desk-danger); }
 .desk-danger:hover:not(:disabled) { color: #f87171 !important; background: var(--desk-danger-bg) !important; border-color: var(--desk-danger-border) !important; }
 .desk-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; min-height: 36px; }
 .desk-feedback .tavern-api__status { margin: 0; min-height: 32px; padding: 6px 12px; border-radius: var(--desk-radius-sm); font-size: .82em; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; background: var(--desk-success-bg); border: 1px solid var(--desk-success-border); color: var(--desk-fg); }
-.desk-feedback .tavern-api__status[data-state=warning] { color: color-mix(in srgb, var(--desk-fg) 72%, #a66500); background: var(--desk-warning-bg); border-color: var(--desk-warning-border); }
+.desk-feedback .tavern-api__status[data-state=warning] { color: color-mix(in srgb, var(--desk-fg) 72%, #a66500); background: var(--desk-warning-bg); border: 1px solid var(--desk-warning-border); }
 .desk-feedback .tavern-api__status:empty { display: none; }
 #tavern_api_persistence { font-size: .74em; color: var(--desk-muted); padding: 3px 8px; border-radius: 4px; background: color-mix(in srgb, var(--desk-fg) 5%, var(--desk-bg)); }
 #tavern_api_persistence[data-state=error] { color: #f87171; background: var(--desk-danger-bg); border: 1px solid var(--desk-danger-border); }
@@ -1579,9 +1815,9 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
     .desk-mobile-select select { min-height: 40px; }
     .desk-editor-heading h3 { font-size: 1.05em; }
     .tavern-api .tavern-api__key-row { flex-wrap: wrap; gap: 6px; }
-    .tavern-api .tavern-api__key-row > #tavern_api_key_input { flex-basis: 100%; width: 100%; border-radius: var(--desk-radius-sm); border-right: 1px solid var(--desk-card-border); }
+    .tavern-api .tavern-api__key-row > #tavern_api_key_input { flex-basis: 100%; width: 100%; border-radius: var(--desk-radius-sm); border-right: 1px solid var(--desk-input-border); }
     .tavern-api .tavern-api__key-actions { width: 100%; justify-content: flex-end; }
-    .tavern-api .tavern-api__key-actions .desk-icon { min-height: 38px; width: 38px; flex-basis: 38px; border-radius: var(--desk-radius-sm); border: 1px solid var(--desk-card-border); }
+    .tavern-api .tavern-api__key-actions .desk-icon { min-height: 38px; width: 38px; flex-basis: 38px; border-radius: var(--desk-radius-sm); border: 1px solid var(--desk-input-border); }
     .tavern-api .desk-primary { flex-basis: 100%; }
     .desk-workspace .tavern-api { padding: 14px; }
 }

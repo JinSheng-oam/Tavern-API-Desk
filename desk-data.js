@@ -113,5 +113,7 @@ export function filterDeskProfiles(profiles, { query = '', format = '', favorite
     const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
     return profiles.filter(profile => (!format || profile.format === format) && (!favorites || profile.favorite)
         && words.every(word => `${profile.name} ${profile.endpoint} ${profile.model} ${profile.format}`.toLocaleLowerCase().includes(word)))
-        .sort((a, b) => Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) || a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
+        .sort((a, b) => (Number.isFinite(a.sortOrder) && Number.isFinite(b.sortOrder) ? a.sortOrder - b.sortOrder : 0)
+            || Number(Boolean(b.favorite)) - Number(Boolean(a.favorite))
+            || a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
 }
