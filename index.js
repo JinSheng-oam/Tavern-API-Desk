@@ -432,7 +432,7 @@ function initializeSettings() {
         changed = true;
     }
     value.blockedSecretKeys = value.blockedSecretKeys && typeof value.blockedSecretKeys === 'object' ? value.blockedSecretKeys : {};
-    value.quickActionPlacement = ['leftSendForm', 'rightSendForm', 'qrButtons', 'disabled'].includes(value.quickActionPlacement)
+    value.quickActionPlacement = ['leftSendForm', 'rightSendForm', 'qrButtons', 'extensionsMenu', 'disabled'].includes(value.quickActionPlacement)
         ? value.quickActionPlacement
         : 'rightSendForm';
     value.showNativeApi = value.showNativeApi !== false;
@@ -2608,7 +2608,7 @@ function modelSuggestionsForProfile(profileId = '') {
 }
 
 function normalizeQuickActionPlacement(value, fallback = 'rightSendForm') {
-    return ['leftSendForm', 'rightSendForm', 'qrButtons', 'disabled'].includes(value) ? value : fallback;
+    return ['leftSendForm', 'rightSendForm', 'qrButtons', 'extensionsMenu', 'disabled'].includes(value) ? value : fallback;
 }
 
 async function chooseQuickActionPlacement(current, onConfirm) {
@@ -2625,6 +2625,7 @@ async function chooseQuickActionPlacement(current, onConfirm) {
         $('<button type="button" class="menu_button" data-placement="leftSendForm"><i class="fa-solid fa-arrow-left"></i><span>发送栏左侧</span></button>'),
         $('<button type="button" class="menu_button" data-placement="rightSendForm"><i class="fa-solid fa-arrow-right"></i><span>发送栏右侧</span></button>'),
         $('<button type="button" class="menu_button" data-placement="qrButtons"><i class="fa-solid fa-table-cells-large"></i><span>Quick Reply 按钮栏</span></button>'),
+        $('<button type="button" class="menu_button" data-placement="extensionsMenu"><i class="fa-solid fa-bars"></i><span>扩展菜单（二级菜单）</span></button>'),
         $('<button type="button" class="menu_button" data-placement="disabled"><i class="fa-solid fa-ban"></i><span>不使用便捷按钮</span></button>'),
     );
     const renderSelection = () => choices.find('[data-placement]').each((_, button) => {
@@ -3094,6 +3095,7 @@ function queueQuickAction(action) {
 }
 
 function closeQuickActionMenu() {
+    quickActionMenu?.data('anchor')?.setAttribute?.('aria-expanded', 'false');
     quickActionPopper?.destroy?.();
     quickActionPopper = null;
     quickActionMenu?.remove();
@@ -3103,26 +3105,33 @@ function closeQuickActionMenu() {
     $(globalThis.visualViewport).off('.tavernApiDeskMenu');
 }
 
-function openQuickActionMenu(anchor, placement) {
-    if (quickActionMenu?.data('anchor') === anchor) return closeQuickActionMenu();
+function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = true } = {}) {
+    if (quickActionMenu?.data('anchor') === anchor) {
+        if (toggle) closeQuickActionMenu();
+        return;
+    }
     closeQuickActionMenu();
     const actions = [...settings().quickActions].sort((a, b) => a.sequence - b.sequence);
-    const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="list" tabindex="-1">').data('anchor', anchor).appendTo(document.body);
+    const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="menu" aria-label="API 快速切换方案" tabindex="-1">')
+        .toggleClass('tavern-api__quick-menu--extensions', placement === 'extensionsMenu')
+        .data('anchor', anchor)
+        .appendTo(document.body);
     quickActionMenu = menu;
-    const settingsItem = $('<li class="list-group-item ctx-header tavern-api__quick-manage" role="listitem" tabindex="0" data-tavern-api-actionable="true" title="便捷按钮管理">')
+    anchor.setAttribute?.('aria-expanded', 'true');
+    const settingsItem = $('<li class="list-group-item ctx-header tavern-api__quick-manage" role="menuitem" tabindex="0" data-tavern-api-actionable="true" title="便捷按钮管理">')
         .append(
             $('<div class="qr--button-icon fa-solid fa-gear">'),
             $('<div class="qr--button-label">').text('设置'),
         )
         .on('click', () => { closeQuickActionMenu(); void manageQuickActions(); });
     menu.append(settingsItem);
-    if (!actions.length) menu.append($('<li class="list-group-item ctx-item tavern-api__quick-menu-empty" role="listitem" aria-disabled="true">').append(
+    if (!actions.length) menu.append($('<li class="list-group-item ctx-item tavern-api__quick-menu-empty" role="menuitem" aria-disabled="true">').append(
         $('<div class="qr--button-icon fa-solid qr--hidden">'),
         $('<div class="qr--button-label">').text('暂无方案'),
     ));
     actions.forEach((action, index) => {
         const name = quickActionDisplayName(action, index);
-        menu.append($('<li class="list-group-item ctx-item" role="listitem" tabindex="0" data-tavern-api-actionable="true">')
+        menu.append($('<li class="list-group-item ctx-item" role="menuitem" tabindex="0" data-tavern-api-actionable="true">')
             .attr('title', name)
             .append(
                 $('<div class="qr--button-icon fa-solid qr--hidden">'),
@@ -3142,7 +3151,7 @@ function openQuickActionMenu(anchor, placement) {
         items.eq(next).trigger('focus');
     });
     quickActionPopper = globalThis.Popper?.createPopper?.(anchor, menu[0], {
-        placement: placement === 'qrButtons' ? 'bottom-start' : placement === 'leftSendForm' ? 'top-start' : 'top-end',
+        placement: placement === 'extensionsMenu' ? 'right-start' : placement === 'qrButtons' ? 'bottom-start' : placement === 'leftSendForm' ? 'top-start' : 'top-end',
         modifiers: [
             { name: 'offset', options: { offset: [0, 8] } },
             { name: 'preventOverflow', options: { padding: 8 } },
@@ -3151,31 +3160,75 @@ function openQuickActionMenu(anchor, placement) {
     }) || null;
     if (!quickActionPopper) {
         const rect = anchor.getBoundingClientRect();
-        menu.css({ position: 'fixed', left: `${Math.max(8, Math.min(rect.left, innerWidth - menu.outerWidth() - 8))}px`, top: `${Math.max(8, rect.top - menu.outerHeight() - 8)}px` });
+        const left = placement === 'extensionsMenu'
+            ? Math.max(8, Math.min(rect.right + 8, innerWidth - menu.outerWidth() - 8))
+            : Math.max(8, Math.min(rect.left, innerWidth - menu.outerWidth() - 8));
+        const top = placement === 'extensionsMenu'
+            ? Math.max(8, Math.min(rect.top, innerHeight - menu.outerHeight() - 8))
+            : Math.max(8, rect.top - menu.outerHeight() - 8);
+        menu.css({ position: 'fixed', left: `${left}px`, top: `${top}px` });
     }
     const closeOnViewport = () => closeQuickActionMenu();
     $(document).on('pointerdown.tavernApiDeskMenu', event => {
         if (!menu[0].contains(event.target) && !anchor.contains(event.target)) closeQuickActionMenu();
     }).on('focusin.tavernApiDeskMenu', event => {
-        if (!menu[0].contains(event.target) && event.target !== anchor) closeQuickActionMenu();
+        if (menu[0].contains(event.target) || event.target === anchor) return;
+        const extensionsButton = anchor.closest?.('#extensionsMenu') ? document.getElementById('extensionsMenuButton') : null;
+        if (extensionsButton?.contains(event.target)) {
+            actionable().first()[0]?.focus?.({ preventScroll: true });
+            return;
+        }
+        closeQuickActionMenu();
     }).on('keydown.tavernApiDeskMenu', event => {
-        if (event.key === 'Escape') { event.preventDefault(); closeQuickActionMenu(); anchor.focus?.(); }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            const anchorVisible = anchor.isConnected && anchor.getClientRects().length > 0;
+            closeQuickActionMenu();
+            (anchorVisible ? anchor : document.getElementById('extensionsMenuButton'))?.focus?.({ preventScroll: true });
+        }
         if (event.key === 'Tab') closeQuickActionMenu();
     });
     $(window).on('resize.tavernApiDeskMenu scroll.tavernApiDeskMenu blur.tavernApiDeskMenu', closeOnViewport);
     $(globalThis.visualViewport).on('resize.tavernApiDeskMenu scroll.tavernApiDeskMenu', closeOnViewport);
-    actionable().first().trigger('focus');
+    if (focusFirst) actionable().first().trigger('focus');
 }
 
 function makeQuickActionEntry(id, placement) {
     const entry = placement !== 'qrButtons'
         ? $('<div class="tavern-api__quick-entry fa-solid fa-bolt interactable" role="button" tabindex="0" aria-label="API Desk 便捷方案" title="API Desk 便捷方案"></div>')
         : $('<button type="button" class="qr--button tavern-api__quick-entry" aria-label="API Desk 便捷方案" title="API Desk 便捷方案"><i class="fa-solid fa-bolt"></i><span>API Desk</span></button>');
-    return entry.attr('id', id)
+    return entry.attr({ id, 'aria-haspopup': 'menu', 'aria-expanded': 'false' })
         .on('click.tavernApiDesk', event => { event.stopPropagation(); openQuickActionMenu(event.currentTarget, placement); })
         .on('keydown.tavernApiDesk', event => {
             if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openQuickActionMenu(event.currentTarget, placement); }
         });
+}
+
+function makeExtensionsMenuQuickActionEntry() {
+    const entry = $('<div id="tavern_api_quick_menu_entry" class="list-group-item flex-container flexGap5 tavern-api__submenu-entry" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-label="API 快速切换" title="API 快速切换">')
+        .append(
+            $('<div class="fa-solid fa-bolt extensionsMenuExtensionButton" aria-hidden="true">'),
+            $('<span>').text('API 快速切换'),
+            $('<i class="fa-solid fa-chevron-right tavern-api__submenu-chevron" aria-hidden="true">'),
+        );
+    entry.on('pointerenter.tavernApiDesk', event => {
+        if (event.pointerType === 'mouse') openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false, focusFirst: false });
+    }).on('pointerdown.tavernApiDesk', event => {
+        if (event.button === 0) openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
+    }).on('keydown.tavernApiDesk', event => {
+        if (['Enter', ' ', 'ArrowRight'].includes(event.key)) {
+            event.preventDefault();
+            openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
+        }
+    });
+    return entry;
+}
+
+function removeExtensionsMenuQuickActionEntry() {
+    const entry = document.getElementById('tavern_api_quick_menu_entry');
+    if (!entry) return;
+    if (quickActionMenu?.data('anchor') === entry) closeQuickActionMenu();
+    entry.remove();
 }
 
 function activeQuickReplyButtonContainer() {
@@ -3189,11 +3242,13 @@ function ensureQuickActionEntries() {
     const placement = normalizeQuickActionPlacement(settings().quickActionPlacement);
     if (placement === 'disabled') {
         $('#tavern_api_quick_left, #tavern_api_quick_right, [data-tavern-api-qr-entry]').remove();
+        removeExtensionsMenuQuickActionEntry();
         closeQuickActionMenu();
         return;
     }
     if (placement === 'leftSendForm') {
         $('#tavern_api_quick_right, [data-tavern-api-qr-entry]').remove();
+        removeExtensionsMenuQuickActionEntry();
         if (!document.getElementById('tavern_api_quick_left')) {
             const extensionsButton = document.getElementById('extensionsMenuButton');
             if (!extensionsButton?.parentElement) return;
@@ -3203,6 +3258,7 @@ function ensureQuickActionEntries() {
     }
     if (placement === 'rightSendForm') {
         $('#tavern_api_quick_left, [data-tavern-api-qr-entry]').remove();
+        removeExtensionsMenuQuickActionEntry();
         if (!document.getElementById('tavern_api_quick_right')) {
             const sendButton = document.getElementById('send_but');
             const entry = makeQuickActionEntry('tavern_api_quick_right', placement)[0];
@@ -3211,6 +3267,21 @@ function ensureQuickActionEntries() {
         return;
     }
     $('#tavern_api_quick_left, #tavern_api_quick_right').remove();
+    if (placement === 'extensionsMenu') {
+        const activeAnchor = quickActionMenu?.data('anchor');
+        if (activeAnchor && activeAnchor.id !== 'tavern_api_quick_menu_entry') closeQuickActionMenu();
+        $('[data-tavern-api-qr-entry]').remove();
+        const menu = document.getElementById('extensionsMenu');
+        if (!menu) {
+            if (quickActionMenu?.data('anchor')?.id === 'tavern_api_quick_menu_entry') closeQuickActionMenu();
+            return;
+        }
+        const current = document.getElementById('tavern_api_quick_menu_entry');
+        if (current && current.parentElement !== menu) removeExtensionsMenuQuickActionEntry();
+        if (!document.getElementById('tavern_api_quick_menu_entry')) menu.append(makeExtensionsMenuQuickActionEntry()[0]);
+        return;
+    }
+    removeExtensionsMenuQuickActionEntry();
     const container = activeQuickReplyButtonContainer();
     if (!container.length) return;
     const current = $('[data-tavern-api-qr-entry]');
@@ -3687,6 +3758,7 @@ async function teardownTavernApiDesk() {
     closeQuickUrlMenu();
     quickActionPlacementPopup = null;
     $('#tavern_api_quick_left, #tavern_api_quick_right, [data-tavern-api-qr-entry]').remove();
+    removeExtensionsMenuQuickActionEntry();
     quickPresetWaitCancel?.();
     quickPresetWaitCancel = null;
     await cancelOwnedPopups();
@@ -3772,15 +3844,19 @@ function watchForDomChanges() {
         const placement = normalizeQuickActionPlacement(settings().quickActionPlacement);
         const entryMissing = placement === 'disabled'
             ? false
-            : placement === 'leftSendForm'
+            : placement === 'extensionsMenu'
+                ? !document.getElementById('tavern_api_quick_menu_entry') || document.getElementById('tavern_api_quick_menu_entry')?.parentElement !== document.getElementById('extensionsMenu')
+                : placement === 'leftSendForm'
                 ? !document.getElementById('tavern_api_quick_left')
                 : placement === 'rightSendForm'
                     ? !document.getElementById('tavern_api_quick_right')
                     : !document.querySelector('[data-tavern-api-qr-entry]');
+        const extensionsMenuChanged = placement === 'extensionsMenu' && elementNodes.some(node =>
+            node.matches?.('#extensionsMenu') || node.querySelector?.('#extensionsMenu'));
         const qrChanged = placement === 'qrButtons' && elementNodes.some(node =>
             node.matches?.('.qr--buttons, [data-tavern-api-qr-entry], #qr--bar, #qr--popout')
             || node.querySelector?.('.qr--buttons, [data-tavern-api-qr-entry], #qr--bar, #qr--popout'));
-        if (entryMissing || qrChanged) scheduleQuickActionEntries();
+        if (entryMissing || qrChanged || extensionsMenuChanged) scheduleQuickActionEntries();
     });
     quickActionObserver.observe(document.body, { childList: true, subtree: true });
     configureAdditionalParametersPopup();

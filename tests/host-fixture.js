@@ -17,6 +17,18 @@ $(document).on('click', '.inline-drawer-toggle', function () {
     drawer.children('.inline-drawer-content').toggle();
     drawer.find('.inline-drawer-icon').toggleClass('fa-circle-chevron-down fa-circle-chevron-up down up');
 });
+const fixtureExtensionsMenuButton = document.getElementById('extensionsMenuButton');
+const fixtureExtensionsMenu = document.getElementById('extensionsMenu');
+fixtureExtensionsMenuButton?.addEventListener('click', () => {
+    fixtureExtensionsMenu.style.display = fixtureExtensionsMenu.style.display === 'none' ? 'flex' : 'none';
+});
+fixtureExtensionsMenu?.addEventListener('click', event => {
+    if (event.target instanceof Element && !event.target.closest('#sd_gen, #roll_dice')) fixtureExtensionsMenu.style.display = 'none';
+}, { capture: true });
+document.addEventListener('click', event => {
+    if (fixtureExtensionsMenu?.style.display !== 'none' && !fixtureExtensionsMenu.contains(event.target)
+        && !fixtureExtensionsMenuButton?.contains(event.target)) fixtureExtensionsMenu.style.display = 'none';
+});
 function fixtureParameters(settings = oai_settings, source, { create = true } = {}) {
     source ??= settings.chat_completion_source === 'custom' && settings.custom_api_format !== 'openai_compat'
         ? `custom_${settings.custom_api_format}` : settings.chat_completion_source;

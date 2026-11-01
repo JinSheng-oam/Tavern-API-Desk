@@ -805,6 +805,13 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     transition: none !important;
 }
 
+.tavern-api__quick-menu--extensions {
+    z-index: 30010;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
+}
+
 .tavern-api__quick-menu > .list-group-item {
     display: flex;
     min-width: 0;
@@ -822,6 +829,39 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     opacity: 1;
     outline: 1px solid var(--SmartThemeQuoteColor);
     outline-offset: -1px;
+}
+
+#tavern_api_quick_menu_entry {
+    min-height: 2.25rem;
+    align-items: center;
+    color: var(--SmartThemeBodyColor);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+#tavern_api_quick_menu_entry .extensionsMenuExtensionButton {
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
+    font-size: calc(var(--mainFontSize) * 1.1);
+}
+
+#tavern_api_quick_menu_entry > span {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+#tavern_api_quick_menu_entry .tavern-api__submenu-chevron {
+    margin-left: auto;
+    font-size: .75em;
+    opacity: .65;
+}
+
+#tavern_api_quick_menu_entry:hover,
+#tavern_api_quick_menu_entry:focus-visible {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+    outline: none;
 }
 
 .tavern-api__quick-menu .qr--button-icon {
