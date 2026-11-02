@@ -812,6 +812,44 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
 }
 
+@media (max-width: 767px), (pointer: coarse) {
+    #extensionsMenu.tavern-api__menu-level-2 {
+        max-height: calc(100vh - 1rem);
+        max-height: calc(100dvh - 1rem);
+        overflow: hidden;
+    }
+
+    #extensionsMenu.tavern-api__menu-level-2 > :not(#tavern_api_quick_inline_menu) {
+        display: none !important;
+    }
+
+    #extensionsMenu.tavern-api__menu-level-2 > #tavern_api_quick_inline_menu {
+        position: static !important;
+        inset: auto !important;
+        transform: none !important;
+        display: flex;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        max-height: min(70vh, calc(100vh - 2rem));
+        max-height: min(70dvh, calc(100dvh - 2rem));
+        flex-direction: column;
+        box-sizing: border-box;
+        margin: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    #tavern_api_quick_inline_menu > .tavern-api__quick-back {
+        border-bottom: 1px solid var(--SmartThemeBorderColor);
+        font-weight: 600;
+    }
+}
+
 .tavern-api__quick-menu > .list-group-item {
     display: flex;
     min-width: 0;

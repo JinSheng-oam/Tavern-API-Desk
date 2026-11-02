@@ -3095,7 +3095,12 @@ function queueQuickAction(action) {
 }
 
 function closeQuickActionMenu() {
-    quickActionMenu?.data('anchor')?.setAttribute?.('aria-expanded', 'false');
+    const menuElement = quickActionMenu?.[0];
+    const anchor = quickActionMenu?.data('anchor');
+    if (menuElement?.classList.contains('tavern-api__quick-menu--inline')) {
+        document.getElementById('extensionsMenu')?.classList.remove('tavern-api__menu-level-2');
+    }
+    anchor?.setAttribute?.('aria-expanded', 'false');
     quickActionPopper?.destroy?.();
     quickActionPopper = null;
     quickActionMenu?.remove();
@@ -3105,19 +3110,52 @@ function closeQuickActionMenu() {
     $(globalThis.visualViewport).off('.tavernApiDeskMenu');
 }
 
-function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = true } = {}) {
+function isMobileQuickActionViewport() {
+    return globalThis.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches ?? (globalThis.innerWidth <= 767);
+}
+
+function reopenExtensionsMenuIfClosed() {
+    const panel = document.getElementById('extensionsMenu');
+    if (panel && getComputedStyle(panel).display === 'none') {
+        document.getElementById('extensionsMenuButton')?.click();
+    }
+}
+
+function openInlineExtensionsQuickActionMenu(anchor) {
+    openQuickActionMenu(anchor, 'extensionsMenu', { toggle: false, focusFirst: false, inline: true });
+    reopenExtensionsMenuIfClosed();
+    quickActionMenu?.find('[data-tavern-api-actionable="true"]').first().trigger('focus');
+}
+
+function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = true, inline = false } = {}) {
     if (quickActionMenu?.data('anchor') === anchor) {
         if (toggle) closeQuickActionMenu();
         return;
     }
     closeQuickActionMenu();
+    const extensionsMenu = inline ? document.getElementById('extensionsMenu') : null;
+    inline = Boolean(extensionsMenu);
+    if (inline) extensionsMenu.classList.add('tavern-api__menu-level-2');
     const actions = [...settings().quickActions].sort((a, b) => a.sequence - b.sequence);
     const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="menu" aria-label="API 快速切换方案" tabindex="-1">')
         .toggleClass('tavern-api__quick-menu--extensions', placement === 'extensionsMenu')
+        .toggleClass('tavern-api__quick-menu--inline', inline)
         .data('anchor', anchor)
-        .appendTo(document.body);
+        .appendTo(inline ? extensionsMenu : document.body);
     quickActionMenu = menu;
     anchor.setAttribute?.('aria-expanded', 'true');
+    if (inline) {
+        menu.append($('<li class="list-group-item ctx-item tavern-api__quick-back" role="menuitem" tabindex="0" data-tavern-api-actionable="true" data-tavern-api-back="true">')
+            .append(
+                $('<div class="qr--button-icon fa-solid fa-arrow-left">'),
+                $('<div class="qr--button-label">').text('返回扩展菜单'),
+            )
+            .on('click', () => {
+                closeQuickActionMenu();
+                reopenExtensionsMenuIfClosed();
+                anchor.focus?.({ preventScroll: true });
+            }));
+    }
     const settingsItem = $('<li class="list-group-item ctx-header tavern-api__quick-manage" role="menuitem" tabindex="0" data-tavern-api-actionable="true" title="便捷按钮管理">')
         .append(
             $('<div class="qr--button-icon fa-solid fa-gear">'),
@@ -3150,7 +3188,7 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
             : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
         items.eq(next).trigger('focus');
     });
-    quickActionPopper = globalThis.Popper?.createPopper?.(anchor, menu[0], {
+    quickActionPopper = inline ? null : globalThis.Popper?.createPopper?.(anchor, menu[0], {
         placement: placement === 'extensionsMenu' ? 'right-start' : placement === 'qrButtons' ? 'bottom-start' : placement === 'leftSendForm' ? 'top-start' : 'top-end',
         modifiers: [
             { name: 'offset', options: { offset: [0, 8] } },
@@ -3158,7 +3196,7 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
             { name: 'computeStyles', options: { gpuAcceleration: false } },
         ],
     }) || null;
-    if (!quickActionPopper) {
+    if (!inline && !quickActionPopper) {
         const rect = anchor.getBoundingClientRect();
         const left = placement === 'extensionsMenu'
             ? Math.max(8, Math.min(rect.right + 8, innerWidth - menu.outerWidth() - 8))
@@ -3173,6 +3211,7 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
         if (!menu[0].contains(event.target) && !anchor.contains(event.target)) closeQuickActionMenu();
     }).on('focusin.tavernApiDeskMenu', event => {
         if (menu[0].contains(event.target) || event.target === anchor) return;
+        if (inline && document.getElementById('extensionsMenu')?.contains(event.target)) return;
         const extensionsButton = anchor.closest?.('#extensionsMenu') ? document.getElementById('extensionsMenuButton') : null;
         if (extensionsButton?.contains(event.target)) {
             actionable().first()[0]?.focus?.({ preventScroll: true });
@@ -3182,9 +3221,10 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     }).on('keydown.tavernApiDeskMenu', event => {
         if (event.key === 'Escape') {
             event.preventDefault();
+            const inline = menu[0].classList.contains('tavern-api__quick-menu--inline');
             const anchorVisible = anchor.isConnected && anchor.getClientRects().length > 0;
             closeQuickActionMenu();
-            (anchorVisible ? anchor : document.getElementById('extensionsMenuButton'))?.focus?.({ preventScroll: true });
+            (inline || anchorVisible ? anchor : document.getElementById('extensionsMenuButton'))?.focus?.({ preventScroll: true });
         }
         if (event.key === 'Tab') closeQuickActionMenu();
     });
@@ -3212,14 +3252,21 @@ function makeExtensionsMenuQuickActionEntry() {
             $('<i class="fa-solid fa-chevron-right tavern-api__submenu-chevron" aria-hidden="true">'),
         );
     entry.on('pointerenter.tavernApiDesk', event => {
-        if (event.pointerType === 'mouse') openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false, focusFirst: false });
+        if (!isMobileQuickActionViewport() && event.pointerType === 'mouse') openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false, focusFirst: false });
     }).on('pointerdown.tavernApiDesk', event => {
-        if (event.button === 0) openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
+        if (!isMobileQuickActionViewport() && event.button === 0) openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
     }).on('keydown.tavernApiDesk', event => {
         if (['Enter', ' ', 'ArrowRight'].includes(event.key)) {
             event.preventDefault();
-            openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
+            event.stopPropagation();
+            if (isMobileQuickActionViewport()) openInlineExtensionsQuickActionMenu(event.currentTarget);
+            else openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
         }
+    }).on('click.tavernApiDesk', event => {
+        if (!isMobileQuickActionViewport()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openInlineExtensionsQuickActionMenu(event.currentTarget);
     });
     return entry;
 }
