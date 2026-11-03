@@ -20,6 +20,7 @@ const MODULE_NAME = 'tavernApiDesk';
 const SCHEMA_VERSION = 15;
 const PANEL_COLLAPSED_STORAGE_KEY = 'tavernApiDesk.panelCollapsed';
 const EMPTY_SECRET_LABEL = 'API Desk · No key';
+const MISSING_SYNCED_SECRET_MESSAGE = '当前设备缺少此配置绑定的密钥，已临时使用安全空密钥。若刚跨设备同步，请在同步范围中勾选“API 密钥”后重新同步，或在此重新填写密钥。';
 const BUILTIN_QUICK_URLS = Object.freeze([
     { name: 'OpenAI', url: 'https://api.openai.com/v1' },
     { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1' },
@@ -304,6 +305,20 @@ function getSecretEntry(key, id) {
 
 function getActiveSecret(key) {
     return getSecretEntries(key).find(entry => entry.active) || null;
+}
+
+// API Desk's own "No key" placeholders never hold a credential. Looking them up
+// on TauriTavern makes find_secret emit a global backend error toast.
+function isPlaceholderSecret(key, entry) {
+    return Boolean(entry) && (entry.id === settings().emptySecretIds[key] || entry.label === EMPTY_SECRET_LABEL);
+}
+
+// A Profile can reference a secret that exists only on another device, e.g.
+// after LAN Sync copied settings.json without the "API keys" dataset.
+function isBoundSecretMissing(profile) {
+    if (!profile?.secretId || usesProxyProfile(profile.format, profile.endpoint)) return false;
+    const key = FORMATS[profile.format].secretKey;
+    return profile.secretId !== settings().emptySecretIds[key] && !getSecretEntry(key, profile.secretId);
 }
 
 function selectedProfile() {
@@ -696,7 +711,7 @@ function updateCredentialEditor(profile = selectedProfile()) {
 }
 
 function getEditorModel(format = normalizeFormat($('#tavern_api_format').val())) {
-    if (hasManagedModels(format)) return normalizeText($('#tavern_api_custom_model').val());
+    if (hasManagedModels(format)) return normalizeText($('#tavern_api_custom_model').val() || $('#tavern_api_model_search_input').val());
     return normalizeText($('#tavern_api_provider_model').val());
 }
 
@@ -743,23 +758,213 @@ function nativeProviderModels(format) {
         .map(option => option.value).filter(value => !platform.isModelAction(value));
 }
 
+function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels) {
+    let isOpen = false;
+    let activeIndex = -1;
+    let isActivelyFiltering = false;
+
+    const getFiltered = () => {
+        const query = normalizeText(input.val());
+        const selectedVal = normalizeText(select.val());
+        if (!isActivelyFiltering || !query || query === selectedVal) {
+            return allModels;
+        }
+        return allModels.filter(m => matchesModelSearch(m, query));
+    };
+
+    const renderDropdown = () => {
+        dropdown.empty();
+        const filtered = getFiltered();
+        const query = normalizeText(input.val());
+        const selectedVal = normalizeText(select.val());
+        const isSearchMode = isActivelyFiltering && query && query !== selectedVal;
+
+        const headerText = isSearchMode
+            ? `找到 ${filtered.length} / ${allModels.length} 个模型`
+            : `全部 ${allModels.length} 个模型（点击选用，或直接键入搜索）`;
+        const header = $('<div class="tavern-api__combobox-header">')
+            .append($('<small>').text(headerText));
+        dropdown.append(header);
+
+        const list = $('<div class="tavern-api__combobox-list">');
+
+        if (isSearchMode && !allModels.includes(query)) {
+            const customOption = $('<div class="tavern-api__combobox-item tavern-api__combobox-item--custom" role="option">')
+                .append($('<i class="fa-solid fa-plus"></i>'), $('<span>').text(` 使用自定义模型：${query}`));
+            customOption.on('mousedown pointerdown', event => {
+                event.preventDefault();
+                chooseModel(query);
+            });
+            list.append(customOption);
+        }
+
+        if (!filtered.length && (!isSearchMode || allModels.includes(query))) {
+            list.append($('<div class="tavern-api__combobox-empty">').text('无匹配模型，输入后回车可直接作为自定义模型'));
+        } else {
+            filtered.forEach((model, idx) => {
+                const isCurrent = model === selectedVal;
+                const item = $('<div class="tavern-api__combobox-item" role="option">')
+                    .attr('data-model', model)
+                    .attr('data-index', idx)
+                    .toggleClass('is-selected', isCurrent)
+                    .toggleClass('is-active', idx === activeIndex);
+                item.append($('<span class="tavern-api__combobox-name">').text(model));
+                if (isCurrent) {
+                    item.append($('<i class="fa-solid fa-check tavern-api__combobox-check" title="当前使用的模型"></i>'));
+                }
+                item.on('mousedown pointerdown', event => {
+                    event.preventDefault();
+                    chooseModel(model);
+                });
+                list.append(item);
+            });
+        }
+        dropdown.append(list);
+    };
+
+    const openDropdown = () => {
+        if (isOpen) return;
+        isOpen = true;
+        activeIndex = -1;
+        dropdown.prop('hidden', false);
+        toggle.find('i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
+        renderDropdown();
+        setTimeout(() => {
+            const selectedItem = dropdown.find('.tavern-api__combobox-item.is-selected');
+            if (selectedItem.length && selectedItem[0]) {
+                selectedItem[0].scrollIntoView({ block: 'nearest' });
+            }
+        }, 30);
+    };
+
+    const closeDropdown = () => {
+        if (!isOpen) return;
+        isOpen = false;
+        activeIndex = -1;
+        isActivelyFiltering = false;
+        dropdown.prop('hidden', true);
+        toggle.find('i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
+    };
+
+    const chooseModel = model => {
+        const normalized = normalizeText(model);
+        if (normalized && !select.find(`option[value="${CSS.escape ? CSS.escape(normalized) : normalized}"]`).length) {
+            select.append($('<option>').val(normalized).text(normalized));
+        }
+        select.val(normalized);
+        input.val(normalized);
+        closeDropdown();
+        select.trigger('change');
+    };
+
+    input.on('focus', () => {
+        isActivelyFiltering = false;
+        openDropdown();
+        setTimeout(() => input.trigger('select'), 20);
+    }).on('input', () => {
+        isActivelyFiltering = true;
+        openDropdown();
+        activeIndex = -1;
+        renderDropdown();
+    }).on('keydown', event => {
+        if (!isOpen) {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                openDropdown();
+                return;
+            }
+        }
+        const items = dropdown.find('.tavern-api__combobox-item');
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (!items.length) return;
+            activeIndex = Math.min(activeIndex + 1, items.length - 1);
+            items.removeClass('is-active');
+            if (activeIndex >= 0) {
+                const active = items.eq(activeIndex).addClass('is-active');
+                active[0]?.scrollIntoView({ block: 'nearest' });
+            }
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (!items.length) return;
+            activeIndex = Math.max(activeIndex - 1, 0);
+            items.removeClass('is-active');
+            if (activeIndex >= 0) {
+                const active = items.eq(activeIndex).addClass('is-active');
+                active[0]?.scrollIntoView({ block: 'nearest' });
+            }
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            if (isOpen && activeIndex >= 0 && items.eq(activeIndex).length) {
+                const chosen = items.eq(activeIndex).data('model') || normalizeText(input.val());
+                chooseModel(chosen);
+            } else if (isActivelyFiltering && normalizeText(input.val())) {
+                chooseModel(input.val());
+            } else {
+                closeDropdown();
+            }
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            input.val(select.val());
+            closeDropdown();
+        }
+    }).on('blur', () => {
+        setTimeout(() => {
+            closeDropdown();
+            const typed = normalizeText(input.val());
+            const currentSelected = normalizeText(select.val());
+            if (!typed) {
+                input.val(currentSelected);
+            } else if (typed !== currentSelected && isActivelyFiltering) {
+                chooseModel(typed);
+            }
+        }, 220);
+    });
+
+    toggle.on('pointerdown mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (isOpen) {
+            closeDropdown();
+        } else {
+            input.trigger('focus');
+        }
+    });
+
+    $(document).on('pointerdown.tavernApiDesk', event => {
+        if (!combobox[0].contains(event.target)) {
+            closeDropdown();
+        }
+    });
+}
+
 function renderModelControl(profile = selectedProfile(), modelOverride = null) {
     const format = normalizeFormat($('#tavern_api_format').val());
     const root = $('#tavern_api_model_control').empty();
     const current = normalizeText(modelOverride ?? profile?.model ?? oai_settings[FORMATS[format].modelField]);
     const nativeModels = nativeProviderModels(format);
     const models = normalizeModelList([...(profile?.customized ? [] : nativeModels), ...(profile?.availableModels || []), current]);
-    const select = $('<select id="tavern_api_custom_model" class="text_pole flex1" aria-label="模型">')
+    const select = $('<select id="tavern_api_custom_model" class="tavern-api__hidden-select" aria-label="模型">')
         .append($('<option>').val('').text('— 选择模型 —'));
     for (const model of models) select.append($('<option>').val(model).text(model));
     select.val(current);
+
+    const combobox = $('<div class="tavern-api__combobox flex1">');
+    const input = $('<input type="text" id="tavern_api_model_search_input" class="text_pole tavern-api__combobox-input" autocomplete="off" spellcheck="false" placeholder="— 搜索或选择模型 —" aria-label="搜索或选择模型">')
+        .val(current);
+    const toggle = $('<span class="tavern-api__combobox-toggle" role="button" tabindex="0" title="展开/收起模型列表" aria-label="展开/收起模型列表"><i class="fa-solid fa-chevron-down"></i></span>');
+    const dropdown = $('<div class="tavern-api__combobox-dropdown" hidden>');
+
+    combobox.append(input, toggle, dropdown, select);
+
     root.append(
-        select,
+        combobox,
         $('<button id="tavern_api_add_model" class="menu_button" type="button" title="添加并使用自定义模型" aria-label="添加并使用自定义模型"><i class="fa-solid fa-plus"></i><span class="tavern-api__desktop-label">添加</span><span class="tavern-api__mobile-label">添加模型</span></button>'),
         $('<button id="tavern_api_fetch_models" class="menu_button" type="button" title="通过 SillyTavern status 后端获取模型"><i class="fa-solid fa-arrows-rotate"></i><span class="tavern-api__desktop-label">获取模型</span><span class="tavern-api__mobile-label">获取模型</span></button>'),
-        $('<button id="tavern_api_manage_models" class="menu_button" type="button" title="管理自定义与远端模型列表"><i class="fa-solid fa-list-check"></i><span class="tavern-api__desktop-label">管理模型列表</span><span class="tavern-api__mobile-label">管理模型</span></button>'),
+        $('<button id="tavern_api_manage_models" class="menu_button" type="button" title="搜索远端模型与管理列表"><i class="fa-solid fa-magnifying-glass"></i><span class="tavern-api__desktop-label">搜索/管理模型</span><span class="tavern-api__mobile-label">搜索模型</span></button>'),
         $('<button class="menu_button tavern-api__manage-actions" type="button" title="便捷按钮管理"><i class="fa-solid fa-bolt"></i><span class="tavern-api__desktop-label">便捷按钮管理</span><span class="tavern-api__mobile-label">便捷按钮</span></button>'),
     );
+    bindModelCombobox(combobox, input, toggle, dropdown, select, models);
     renderPanelSummary();
 }
 
@@ -838,6 +1043,7 @@ function renderStatus(extraMessage = '') {
         const proxyMode = usesProxyProfile(profile.format, profile.endpoint);
         const blockedMessage = proxyMode ? '' : getBlockedSecretMessage(FORMATS[profile.format].secretKey);
         if (blockedMessage) return setStatus('安全阻断：凭据状态无法确认。', 'warning');
+        if (isBoundSecretMissing(profile)) return setStatus(MISSING_SYNCED_SECRET_MESSAGE, 'warning');
         if (settings().activeProfileId !== profile.id) return setStatus(extraMessage || '所选 Profile 未应用。', 'warning');
         if (editorHasUnsavedChanges(profile)) return setStatus('当前修改尚未保存。', 'warning');
         if (!profileMatchesNative(profile, { includeModel: false })
@@ -1986,7 +2192,7 @@ async function deleteSelectedProfile() {
 
 async function findMatchingSecret(key, value) {
     if (!await canReadSecretPlaintext()) return { entry: null, exposureAvailable: false };
-    const entries = getSecretEntries(key);
+    const entries = getSecretEntries(key).filter(entry => !isPlaceholderSecret(key, entry));
     let readable = entries.length === 0;
     for (const entry of entries) {
         const existing = await findSecretBounded(key, entry.id);
@@ -2121,6 +2327,7 @@ async function addCustomModel() {
     scheduleSettingsSave();
     renderModelControl(profile);
     $('#tavern_api_custom_model').val(model);
+    $('#tavern_api_model_search_input').val(model);
     syncEditorModelToNative();
     renderStatus();
 }
@@ -2258,13 +2465,9 @@ async function fetchModelsForProfile(profile, endpoint) {
         const customEntries = Array.isArray(authoritative[config.secretKey]) ? authoritative[config.secretKey] : [];
         previousActiveId = customEntries.find(entry => entry.active)?.id || await ensureEmptySecret(config.secretKey);
         if (!previousActiveId) throw new Error('无法建立模型获取前的安全凭据基线');
+        // A missing binding may exist on another device; probe with the safe
+        // empty key, but never erase the stored reference.
         const boundSecretExists = Boolean(profile.secretId && customEntries.some(entry => entry.id === profile.secretId));
-        if (profile.secretId && !boundSecretExists) {
-            profile.secretId = '';
-            profile.needsSecret = true;
-            scheduleSettingsSave();
-            updateCredentialEditor(profile);
-        }
         desiredSecretId = boundSecretExists ? profile.secretId : await ensureEmptySecret(config.secretKey);
         if (!desiredSecretId) throw new Error(`无法建立 Profile 对应的安全 ${config.label} 密钥`);
         if (previousActiveId !== desiredSecretId && !await rotateSecretVerified(config.secretKey, desiredSecretId)) {
@@ -2323,6 +2526,7 @@ async function fetchCustomModels() {
         scheduleSettingsSave();
         renderModelControl(profile);
         $('#tavern_api_custom_model').val(profile.model);
+        $('#tavern_api_model_search_input').val(profile.model);
         toastr.success(`通过${result.route}获取 ${result.models.length} 个模型。`);
         renderStatus();
     } catch (error) {
@@ -2401,6 +2605,17 @@ async function manageCustomModels() {
         draft.customized = true;
         ensureCurrent();
     };
+    const selectModel = model => {
+        const normalized = normalizeText(model);
+        if (!normalized) return;
+        if (!draft.available.includes(normalized)) {
+            draft.available = normalizeModelList([...draft.available, normalized]);
+        }
+        draft.current = normalized;
+        markCustomized();
+        renderManager();
+        toastr.info(`已选用模型：“${normalized}”`);
+    };
     const filteredRemoteModels = () => draft.fetched.filter(model => matchesModelSearch(model, searchInput.val()));
     const renderManager = ({ remoteOnly = false } = {}) => {
         ensureCurrent();
@@ -2412,9 +2627,20 @@ async function manageCustomModels() {
         if (!draft.fetched.length) remoteList.append($('<div class="tavern-api__empty-state">').text('尚无当前 URL 的远端快照'));
         else if (!matching.length) remoteList.append($('<div class="tavern-api__empty-state">').text('没有匹配的远端模型，请尝试其他关键词或清空搜索'));
         for (const model of matching) {
+            const isCurrent = model === draft.current;
             const checkbox = $('<input type="checkbox">').prop('checked', selected.has(model)).attr('aria-label', `选择 ${model}`);
+            const useAction = isCurrent
+                ? $('<bdi class="tavern-api__current-badge" title="当前正在使用的模型"><i class="fa-solid fa-circle-check"></i> 当前</bdi>')
+                : $('<button type="button" class="menu_button tavern-api__use-model-button" title="选用此模型作为当前对话模型"><i class="fa-solid fa-check"></i> 选用</button>')
+                    .on('click', event => {
+                        event.stopPropagation();
+                        selectModel(model);
+                    });
             const row = $('<div class="tavern-api__model-item tavern-api__remote-model" role="checkbox" tabindex="0">')
-                .attr('aria-checked', selected.has(model)).append(checkbox, $('<span>').text(model), $('<small>').text('远端'));
+                .attr('aria-checked', selected.has(model))
+                .attr('data-current', String(isCurrent))
+                .append(checkbox, $('<span>').text(model), $('<small>').text('远端'), useAction)
+                .on('dblclick', () => selectModel(model));
             const toggle = checked => {
                 if (checked) draft.available = normalizeModelList([...draft.available, model]);
                 else if (model !== draft.current) draft.available = draft.available.filter(item => item !== model);
@@ -2558,6 +2784,7 @@ async function manageCustomModels() {
         animation: 'none',
     })) return;
     ensureCurrent();
+    if (draft.current) profile.model = draft.current;
     profile.availableModels = draft.available;
     profile.fetchedModels = draft.fetched;
     profile.customized = draft.customized;
@@ -2566,6 +2793,7 @@ async function manageCustomModels() {
     scheduleSettingsSave();
     renderModelControl(profile);
     $('#tavern_api_custom_model').val(draft.current);
+    $('#tavern_api_model_search_input').val(draft.current);
     syncEditorModelToNative();
     renderStatus();
 }
@@ -3097,12 +3325,13 @@ function queueQuickAction(action) {
 function closeQuickActionMenu() {
     const menuElement = quickActionMenu?.[0];
     const anchor = quickActionMenu?.data('anchor');
-    if (menuElement?.classList.contains('tavern-api__quick-menu--inline')) {
+    if (menuElement?.classList.contains('tavern-api__quick-menu--inline') || document.getElementById('tavern_api_quick_inline_menu')) {
         document.getElementById('extensionsMenu')?.classList.remove('tavern-api__menu-level-2');
     }
     anchor?.setAttribute?.('aria-expanded', 'false');
     quickActionPopper?.destroy?.();
     quickActionPopper = null;
+    $('#tavern_api_quick_inline_menu').remove();
     quickActionMenu?.remove();
     quickActionMenu = null;
     $(document).off('.tavernApiDeskMenu');
@@ -3140,8 +3369,9 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="menu" aria-label="API 快速切换方案" tabindex="-1">')
         .toggleClass('tavern-api__quick-menu--extensions', placement === 'extensionsMenu')
         .toggleClass('tavern-api__quick-menu--inline', inline)
-        .data('anchor', anchor)
-        .appendTo(inline ? extensionsMenu : document.body);
+        .data('anchor', anchor);
+    if (inline) menu.attr('id', 'tavern_api_quick_inline_menu');
+    menu.appendTo(inline ? extensionsMenu : document.body);
     quickActionMenu = menu;
     anchor.setAttribute?.('aria-expanded', 'true');
     if (inline) {
@@ -3206,9 +3436,17 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
             : Math.max(8, rect.top - menu.outerHeight() - 8);
         menu.css({ position: 'fixed', left: `${left}px`, top: `${top}px` });
     }
-    const closeOnViewport = () => closeQuickActionMenu();
+    const openedAt = Date.now();
+    const closeOnViewport = event => {
+        if (event?.type === 'scroll' && Date.now() - openedAt < 100) return;
+        const target = event?.target;
+        if (event?.type === 'scroll' && target && (menu[0].contains(target) || document.getElementById('extensionsMenu')?.contains(target))) return;
+        closeQuickActionMenu();
+    };
     $(document).on('pointerdown.tavernApiDeskMenu', event => {
-        if (!menu[0].contains(event.target) && !anchor.contains(event.target)) closeQuickActionMenu();
+        if (menu[0].contains(event.target) || anchor.contains(event.target)) return;
+        if (inline && document.getElementById('extensionsMenu')?.contains(event.target)) return;
+        closeQuickActionMenu();
     }).on('focusin.tavernApiDeskMenu', event => {
         if (menu[0].contains(event.target) || event.target === anchor) return;
         if (inline && document.getElementById('extensionsMenu')?.contains(event.target)) return;
@@ -3228,9 +3466,11 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
         }
         if (event.key === 'Tab') closeQuickActionMenu();
     });
-    $(window).on('resize.tavernApiDeskMenu scroll.tavernApiDeskMenu blur.tavernApiDeskMenu', closeOnViewport);
-    $(globalThis.visualViewport).on('resize.tavernApiDeskMenu scroll.tavernApiDeskMenu', closeOnViewport);
-    if (focusFirst) actionable().first().trigger('focus');
+    if (!inline) {
+        $(window).on('resize.tavernApiDeskMenu scroll.tavernApiDeskMenu blur.tavernApiDeskMenu', closeOnViewport);
+        $(globalThis.visualViewport).on('resize.tavernApiDeskMenu scroll.tavernApiDeskMenu', closeOnViewport);
+    }
+    if (focusFirst) actionable().first()[0]?.focus?.({ preventScroll: true });
 }
 
 function makeQuickActionEntry(id, placement) {
@@ -3263,10 +3503,11 @@ function makeExtensionsMenuQuickActionEntry() {
             else openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
         }
     }).on('click.tavernApiDesk', event => {
-        if (!isMobileQuickActionViewport()) return;
-        event.preventDefault();
-        event.stopPropagation();
-        openInlineExtensionsQuickActionMenu(event.currentTarget);
+        if (isMobileQuickActionViewport()) {
+            event.preventDefault();
+            event.stopPropagation();
+            openInlineExtensionsQuickActionMenu(event.currentTarget);
+        }
     });
     return entry;
 }

@@ -273,3 +273,9 @@
 @media (prefers-reduced-motion: no-preference) {
     .tavern-api :is(.menu_button, .desk-profile, .desk-search, .text_pole) { transition: background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out; }
 }
+
+.tavern-api #tavern_api_model_control > .tavern-api__combobox { flex: 1 1 150px; min-width: 0; }
+@media (max-width: 760px) {
+    .tavern-api #tavern_api_model_control > .tavern-api__combobox { grid-column: 1 / -1; grid-row: 2; width: 100%; min-height: 40px; }
+    .tavern-api .tavern-api__combobox-dropdown { left: 0; right: 0; width: 100%; min-width: 100%; max-width: 100%; }
+}

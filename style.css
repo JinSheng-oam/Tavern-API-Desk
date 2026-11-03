@@ -812,42 +812,43 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
 }
 
-@media (max-width: 767px), (pointer: coarse) {
-    #extensionsMenu.tavern-api__menu-level-2 {
-        max-height: calc(100vh - 1rem);
-        max-height: calc(100dvh - 1rem);
-        overflow: hidden;
-    }
+#extensionsMenu.tavern-api__menu-level-2 {
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+    overflow: hidden;
+}
 
-    #extensionsMenu.tavern-api__menu-level-2 > :not(#tavern_api_quick_inline_menu) {
-        display: none !important;
-    }
+#extensionsMenu.tavern-api__menu-level-2 > :not(#tavern_api_quick_inline_menu):not(.tavern-api__quick-menu--inline) {
+    display: none !important;
+}
 
-    #extensionsMenu.tavern-api__menu-level-2 > #tavern_api_quick_inline_menu {
-        position: static !important;
-        inset: auto !important;
-        transform: none !important;
-        display: flex;
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
-        max-height: min(70vh, calc(100vh - 2rem));
-        max-height: min(70dvh, calc(100dvh - 2rem));
-        flex-direction: column;
-        box-sizing: border-box;
-        margin: 0;
-        overflow-x: hidden;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        border: 0;
-        border-radius: 0;
-        box-shadow: none;
-    }
+#extensionsMenu.tavern-api__menu-level-2 > #tavern_api_quick_inline_menu,
+#extensionsMenu.tavern-api__menu-level-2 > .tavern-api__quick-menu--inline {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    max-height: min(70vh, calc(100vh - 2rem));
+    max-height: min(70dvh, calc(100dvh - 2rem));
+    flex-direction: column;
+    box-sizing: border-box;
+    margin: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
 
-    #tavern_api_quick_inline_menu > .tavern-api__quick-back {
-        border-bottom: 1px solid var(--SmartThemeBorderColor);
-        font-weight: 600;
-    }
+#tavern_api_quick_inline_menu > .tavern-api__quick-back,
+.tavern-api__quick-menu--inline > .tavern-api__quick-back {
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    font-weight: 600;
+    cursor: pointer;
 }
 
 .tavern-api__quick-menu > .list-group-item {
@@ -1901,4 +1902,198 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 }
 @media (prefers-reduced-motion: no-preference) {
     .tavern-api :is(.menu_button, .desk-profile, .desk-search, .text_pole) { transition: background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out; }
+}
+
+
+/* Model Manager Selection Badges */
+.tavern-api__use-model-button {
+    font-size: 0.78em;
+    padding: 2px 7px;
+    min-height: 1.7rem;
+    height: 1.7rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.tavern-api__current-badge {
+    font-size: 0.78em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--tavern-api-success, #34d399) 24%, transparent);
+    color: var(--tavern-api-success, #34d399);
+    font-weight: 600;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tavern-api__remote-model[data-current="true"],
+.tavern-api__chosen-model[data-current="true"] {
+    border-color: color-mix(in srgb, var(--tavern-api-success, #34d399) 70%, var(--SmartThemeBorderColor, #666));
+    background: color-mix(in srgb, var(--tavern-api-success, #34d399) 14%, var(--SmartThemeBlurTintColor, #222));
+}
+
+/* Model Search Combobox */
+.tavern-api__combobox {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 150px;
+    min-width: 0;
+}
+
+.tavern-api__combobox-input {
+    width: 100%;
+    padding-right: 2.2rem !important;
+    text-overflow: ellipsis;
+    cursor: text;
+}
+
+.tavern-api__combobox-toggle {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    cursor: pointer;
+    opacity: 0.65;
+    transition: opacity 0.15s, transform 0.15s;
+    user-select: none;
+    z-index: 2;
+    color: var(--desk-subtle, inherit);
+}
+
+.tavern-api__combobox-toggle:hover {
+    opacity: 1;
+}
+
+.tavern-api__combobox-dropdown {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 0;
+    z-index: 9999;
+    min-width: max(100%, 340px);
+    max-width: min(520px, calc(100vw - 24px));
+    width: max-content;
+    max-height: 280px;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--SmartThemeCardColor, #20232b);
+    background: color-mix(in srgb, var(--desk-card-bg, #20232b) 98%, var(--desk-fg, #fff) 2%);
+    border: 1px solid var(--desk-card-border, var(--SmartThemeBorderColor, #626570));
+    border-radius: 8px;
+    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.42), 0 3px 10px rgba(0, 0, 0, 0.22);
+    color: var(--desk-fg, var(--SmartThemeBodyColor, inherit));
+    overflow: hidden;
+}
+
+.tavern-api__combobox-dropdown[hidden] {
+    display: none !important;
+}
+
+.tavern-api__combobox-header {
+    padding: 7px 12px;
+    font-size: 0.78em;
+    opacity: 0.75;
+    border-bottom: 1px solid var(--desk-card-border, color-mix(in srgb, var(--SmartThemeBorderColor, #626570) 50%, transparent));
+    background: color-mix(in srgb, var(--desk-fg, #eee) 5%, transparent);
+    user-select: none;
+    white-space: nowrap;
+}
+
+.tavern-api__combobox-list {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    max-height: 240px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+}
+
+.tavern-api__combobox-item {
+    padding: 7px 10px;
+    font-size: 0.86em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    user-select: none;
+    border-radius: 4px;
+    white-space: nowrap;
+    transition: background 0.12s ease;
+}
+
+.tavern-api__combobox-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tavern-api__combobox-item:hover,
+.tavern-api__combobox-item.is-active {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #c8d4c2) 20%, transparent);
+    color: var(--SmartThemeBodyColor, inherit);
+}
+
+.tavern-api__combobox-item.is-selected {
+    font-weight: 600;
+    color: var(--tavern-api-success, #10b981);
+    background: color-mix(in srgb, var(--tavern-api-success, #10b981) 12%, transparent);
+}
+
+.tavern-api__combobox-item--custom {
+    color: var(--SmartThemeQuoteColor, #c8d4c2);
+    border-bottom: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #626570) 60%, transparent);
+    font-weight: 500;
+}
+
+.tavern-api__combobox-empty {
+    padding: 14px 12px;
+    text-align: center;
+    font-size: 0.82em;
+    opacity: 0.65;
+}
+
+.tavern-api__combobox-check {
+    font-size: 0.85em;
+    color: var(--tavern-api-success, #10b981);
+    flex-shrink: 0;
+}
+
+.tavern-api__hidden-select {
+    position: absolute !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    clip: rect(0, 0, 0, 0) !important;
+}
+
+@media (max-width: 760px) {
+    #tavern_api_model_control > .tavern-api__combobox,
+    .tavern-api #tavern_api_model_control > .tavern-api__combobox {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        width: 100%;
+        min-height: 40px;
+    }
+    .tavern-api__combobox-dropdown {
+        left: 0;
+        right: 0;
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+    }
 }

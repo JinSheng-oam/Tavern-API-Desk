@@ -233,6 +233,39 @@ export async function runCompatibilityRegressions({ page, scopedHost, log }) {
         await run(`compatRequests=[]`);
         log('TT denied exposure avoids find during save/reveal, and permission changes take effect without reload');
 
+        // Placeholder "No key" secrets must never reach TT find_secret, which
+        // raises a global backend error toast for empty/missing secrets.
+        await run(`compatAllowExposure=true; compatFindMode='error'; messages.length=0;
+            compatSecrets.api_key_custom.push({id:'desk-empty',active:false,label:EMPTY_SECRET_LABEL,value:''});
+            settings().emptySecretIds.api_key_custom='desk-empty'`);
+        const match = await run(`(async()=>{ await readAuthoritativeSecretState(); compatRequests=[]; return await findMatchingSecret('api_key_custom','fresh-synthetic-value'); })()`);
+        assert.equal(match.entry, null);
+        assert.equal(match.exposureAvailable, true);
+        assert.equal(await run(`compatRequests.some(r=>r.url==='/api/secrets/find' && r.body.id==='desk-empty')`), false);
+        log('TT duplicate-key check skips API Desk empty placeholders and does not report a false "cannot compare" warning');
+
+        await run(`window.compatSynced = normalizeProfile({id:'compat-synced',name:'Synced',format:'openai',endpoint:'https://models.invalid/v1',model:'synced-model',secretId:'synced-elsewhere'});
+            settings().profiles.push(compatSynced); settings().selectedProfileId=compatSynced.id; renderProfiles(compatSynced.id);
+            messages.length=0; compatRequests=[]`);
+        assert.equal(await run('applyProfile(compatSynced)'), true);
+        assert.equal(await run('compatSynced.secretId'), 'synced-elsewhere');
+        assert.equal(await run(`getActiveSecret('api_key_custom')?.id`), 'desk-empty');
+        assert.match(await run(`messages.find(m=>m.level==='warning')?.message || ''`), /同步/);
+        assert.match(await run(`$('#tavern_api_status').text()`), /缺少此配置绑定的密钥/);
+        await run('fetchModelsForProfile(compatSynced, compatSynced.endpoint)');
+        assert.equal(await run('compatSynced.secretId'), 'synced-elsewhere');
+        assert.equal(await run('readBoundSecret(compatSynced)'), null);
+        assert.equal(await run(`compatRequests.some(r=>r.url==='/api/secrets/find')`), false);
+        await run(`compatSecrets.api_key_custom.push({id:'synced-elsewhere',active:false,value:'synced-synthetic-key'}); applyProfile(compatSynced)`);
+        assert.equal(await run(`getActiveSecret('api_key_custom')?.id`), 'synced-elsewhere');
+        assert.equal(await run('readBoundSecret(compatSynced)'), 'synced-synthetic-key');
+        await run(`settings().profiles=settings().profiles.filter(p=>p.id!=='compat-synced');
+            compatSecrets.api_key_custom=compatSecrets.api_key_custom.filter(e=>e.id!=='synced-elsewhere');
+            for (const e of compatSecrets.api_key_custom) e.active=e.id==='original';
+            settings().selectedProfileId=compatCustom.id; renderProfiles(compatCustom.id);
+            compatAllowExposure=false; compatFindMode='normal'; compatRequests=[]`);
+        log('a binding missing on this device (settings synced without API keys) is preserved, never looked up, and works once keys arrive');
+
         assert.equal(await run(`$('#tavern_api_format option[value="opencode"]').length`), 1);
         await run(`
             window.compatOpenCode = normalizeProfile({id:'compat-opencode',name:'OpenCode',format:'opencode',endpoint:'go',opencodeApiFormat:'claude_messages',model:'new-claude',secretId:'bound',includeBody:'{"test":true}',includeHeaders:'{"X-Test":"value"}',excludeBody:'["temperature"]'});

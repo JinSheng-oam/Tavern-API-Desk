@@ -177,7 +177,7 @@ let browser, socket;
 let passed = 0;
 const log = label => { passed++; console.log(`PASS ${label}`); };
 try {
-    browser = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-extensions', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', `--user-data-dir=${userDataDir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    browser = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-extensions', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--window-size=1280,800', `--user-data-dir=${userDataDir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
     const wsUrl = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Browser launch timed out')), 15000);
         browser.once('error', reject);
@@ -194,6 +194,7 @@ try {
     socket.onmessage = ({ data }) => {
         const message = JSON.parse(data);
         if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails);
+        if (message.method === 'Runtime.consoleAPICalled') console.log('[BROWSER-LOG]', ...message.params.args.map(a => a.value ?? a.description ?? ''));
         if (!pending.has(message.id)) return;
         const { resolve, reject, timer } = pending.get(message.id);
         pending.delete(message.id); clearTimeout(timer);
@@ -251,7 +252,7 @@ try {
     assert.equal(await run('menuPlacementChoice'), 'extensionsMenu');
     await run(`settings().quickActionPlacement = 'extensionsMenu'; ensureQuickActionEntries(); document.getElementById('extensionsMenuButton').click()`);
     assert.deepEqual(await run(`[document.getElementById('tavern_api_quick_menu_entry')?.parentElement?.id, document.getElementById('extensionsMenu').style.display]`), ['extensionsMenu', 'flex']);
-    await run(`document.getElementById('tavern_api_quick_menu_entry').focus(); document.getElementById('tavern_api_quick_menu_entry').dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowRight', bubbles:true, cancelable:true}))`);
+    await run(`document.getElementById('tavern_api_quick_menu_entry').focus({ preventScroll: true }); document.getElementById('tavern_api_quick_menu_entry').dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowRight', bubbles:true, cancelable:true}))`);
     assert.deepEqual(await run(`[Boolean(document.querySelector('.tavern-api__quick-menu')), document.activeElement?.classList.contains('tavern-api__quick-manage'), document.getElementById('tavern_api_quick_menu_entry').getAttribute('aria-expanded')]`), [true, true, 'true']);
     await run(`document.querySelector('.tavern-api__quick-menu [data-tavern-api-actionable="true"]').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}))`);
     assert.deepEqual(await run(`[Boolean(document.querySelector('.tavern-api__quick-menu')), document.activeElement?.id, document.getElementById('extensionsMenu').style.display]`), [false, 'tavern_api_quick_menu_entry', 'flex']);
@@ -265,6 +266,22 @@ try {
     assert.equal(await run(`Boolean(document.querySelector('dialog[open] .tavern-api__quick-manager'))`), false);
     await run(`settings().quickActionPlacement = 'disabled'; ensureQuickActionEntries()`);
     log('extension-menu placement opens a persistent second-level action menu and its quick-action manager');
+
+    // Test mobile inline quick action menu
+    await run(`settings().quickActionPlacement = 'extensionsMenu'; ensureQuickActionEntries()`);
+    await run(`const menu = document.getElementById('extensionsMenu'); if (menu.style.display === 'none') document.getElementById('extensionsMenuButton').click()`);
+    await run(`openInlineExtensionsQuickActionMenu(document.getElementById('tavern_api_quick_menu_entry'))`);
+    assert.equal(await run(`document.getElementById('extensionsMenu').classList.contains('tavern-api__menu-level-2')`), true);
+    assert.equal(await run(`Boolean(document.getElementById('tavern_api_quick_inline_menu'))`), true);
+    assert.equal(await run(`getComputedStyle(document.getElementById('tavern_api_quick_inline_menu')).display !== 'none'`), true);
+    assert.equal(await run(`getComputedStyle(document.getElementById('fixture_host_menu_item')).display`), 'none');
+    assert.equal(await run(`Boolean(document.querySelector('#tavern_api_quick_inline_menu .tavern-api__quick-back'))`), true);
+    await run(`document.querySelector('#tavern_api_quick_inline_menu .tavern-api__quick-back').click()`);
+    assert.equal(await run(`document.getElementById('extensionsMenu').classList.contains('tavern-api__menu-level-2')`), false);
+    assert.equal(await run(`Boolean(document.getElementById('tavern_api_quick_inline_menu'))`), false);
+    assert.equal(await run(`getComputedStyle(document.getElementById('fixture_host_menu_item')).display !== 'none'`), true);
+    await run(`settings().quickActionPlacement = 'disabled'; ensureQuickActionEntries()`);
+    log('mobile inline quick action menu displays correctly inside extensionsMenu without collapsing and returns on back click');
 
     await run(`$('#tavern_api_custom_model').val('model-c'); oai_settings.custom_model = 'stale-native'; document.getElementById('update_oai_preset').click(); nativeSaveTask`);
     assert.equal(state.presets.A.custom_model, 'model-c');
