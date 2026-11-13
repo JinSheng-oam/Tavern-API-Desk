@@ -521,6 +521,41 @@ try {
     assert.equal(state.settings.extension_settings.tavernApiDesk.quickActions[0].name, 'Unsaved');
     log('detail plus global save persists schemes before closing the manager');
 
+    const orderPage = await newPage();
+    const order = orderPage.evaluate;
+    const readMenuOrder = () => order(`(() => {
+        const anchor = document.getElementById('extensionsMenuButton');
+        const read = () => [...document.querySelectorAll('.tavern-api__quick-menu [data-tavern-api-quick-action]')]
+            .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+            .map(item => item.dataset.tavernApiQuickAction);
+        openQuickActionMenu(anchor, 'leftSendForm', { focusFirst: false });
+        const floating = read();
+        closeQuickActionMenu();
+        $('#extensionsMenu').show();
+        openQuickActionMenu(anchor, 'extensionsMenu', { inline: true, focusFirst: false });
+        const inline = read();
+        closeQuickActionMenu();
+        $('#extensionsMenu').hide();
+        return { floating, inline };
+    })()`);
+    const savedOrder = await order(`settings().quickActions.map((action, i) => {
+        action.sequence = -i; // A stale sequence must not override the order shown in settings.
+        return action.id;
+    })`);
+    assert.deepEqual(await readMenuOrder(), { floating: savedOrder, inline: savedOrder });
+    await order(`void manageQuickActions(); document.querySelector('.tavern-api__quick-item').dispatchEvent(
+        new KeyboardEvent('keydown', { key:'ArrowDown', altKey:true, bubbles:true, cancelable:true }));
+        document.querySelector('.tavern-api__quick-header-actions .tavern-api__save-button').click();`);
+    for (let i = 0; i < 50 && await order(`Boolean(document.querySelector('dialog[open]'))`); i++) await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(await order(`Boolean(document.querySelector('dialog[open]'))`), false);
+    const reordered = [savedOrder[1], savedOrder[0], ...savedOrder.slice(2)];
+    assert.deepEqual(await readMenuOrder(), { floating: reordered, inline: reordered });
+    state.settings.extension_settings.tavernApiDesk.quickActions.forEach((action, i) => { action.sequence = -i; });
+    await orderPage.reload();
+    assert.deepEqual(await readMenuOrder(), { floating: reordered, inline: reordered });
+    await order('teardownTavernApiDesk()');
+    log('saved quick action order matches both menu layouts immediately and after reload despite stale sequence values');
+
     await run(`settings().profiles.push(normalizeProfile({id:'claude',name:'Claude test',format:'anthropic',secretId:'test-secret',model:'claude-custom'})); settings().selectedProfileId='claude'; settings().activeProfileId='claude'; oai_settings.chat_completion_source='claude'; oai_settings.claude_model='claude-custom'; $('#chat_completion_source').val('claude'); renderProfiles('claude');`);
     assert.equal(await run('getEditorModel()'), 'claude-custom');
     await run(`syncEditorModelToNative()`);

@@ -868,6 +868,8 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
 }
 
 .tavern-api__quick-menu {
+    display: flex;
+    flex-direction: column;
     z-index: 10050;
     width: max-content;
     min-width: 9rem;
@@ -934,6 +936,7 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
 
 .tavern-api__quick-menu > .list-group-item {
     display: flex;
+    flex: 0 0 auto;
     min-width: 0;
     align-items: center;
     overflow: hidden;

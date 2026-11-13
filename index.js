@@ -382,7 +382,8 @@ function normalizeQuickAction(raw, index = 0) {
         preset: normalizeText(raw?.preset).slice(0, 500),
         profileId: normalizeText(raw?.profileId),
         model: normalizeText(raw?.model).slice(0, 500),
-        sequence: Number.isFinite(Number(raw?.sequence)) ? Number(raw.sequence) : index,
+        // The list order is authoritative; keep sequence as a compatibility field.
+        sequence: index,
     };
 }
 
@@ -473,7 +474,7 @@ function initializeSettings() {
     value.quickActions = Array.isArray(value.quickActions)
         ? value.quickActions.map(normalizeQuickAction).filter(action => action.preset || action.profileId || action.model)
         : [];
-    value.quickActions.sort((a, b) => a.sequence - b.sequence).forEach((action, index) => { action.sequence = index; });
+    value.quickActions.forEach((action, index) => { action.sequence = index; });
     value.quickUrls = Array.isArray(value.quickUrls)
         ? value.quickUrls.map(normalizeQuickUrl).filter(item => item.name && isValidQuickUrl(item.url))
         : [];
@@ -2956,7 +2957,7 @@ async function chooseQuickActionPlacement(current, onConfirm) {
 
 async function manageQuickActions() {
     if (extensionDisabled || teardownPending) return;
-    const globalDraft = settings().quickActions.map(action => normalizeQuickAction(structuredClone(action)));
+    const globalDraft = settings().quickActions.map(normalizeQuickAction);
     const initialGlobalSnapshot = JSON.stringify(globalDraft);
     let draftPlacement = normalizeQuickActionPlacement(settings().quickActionPlacement);
     let selectedId = globalDraft[0]?.id || '';
@@ -3079,7 +3080,6 @@ async function manageQuickActions() {
         });
         enableListDragSort(listItems, '.tavern-api__quick-item', (fromIndex, toIndex) => {
             if (!moveListItem(globalDraft, fromIndex, toIndex)) return;
-            globalDraft.forEach((item, idx) => { item.sequence = idx; });
             renderListItems();
             updateSaveState();
         });
@@ -3240,6 +3240,7 @@ async function manageQuickActions() {
         saveAll.prop('disabled', false);
         close.prop('disabled', false);
         if (saved && managerOpen) {
+            closeQuickActionMenu();
             ensureQuickActionEntries();
             toastr.success('便捷方案已保存到 SillyTavern。');
             void popup.completeAffirmative();
@@ -3472,7 +3473,7 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     const extensionsMenu = inline ? document.getElementById('extensionsMenu') : null;
     inline = Boolean(extensionsMenu);
     if (inline) extensionsMenu.classList.add('tavern-api__menu-level-2');
-    const actions = [...settings().quickActions].sort((a, b) => a.sequence - b.sequence);
+    const actions = settings().quickActions;
     const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="menu" aria-label="API 快速切换方案" tabindex="-1">')
         .toggleClass('tavern-api__quick-menu--extensions', placement === 'extensionsMenu')
         .toggleClass('tavern-api__quick-menu--inline', inline)
@@ -3507,7 +3508,7 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     actions.forEach((action, index) => {
         const name = quickActionDisplayName(action, index);
         menu.append($('<li class="list-group-item ctx-item" role="menuitem" tabindex="0" data-tavern-api-actionable="true">')
-            .attr('title', name)
+            .attr({ title: name, 'data-tavern-api-quick-action': action.id })
             .append(
                 $('<div class="qr--button-icon fa-solid qr--hidden">'),
                 $('<div class="qr--button-label">').text(name),
