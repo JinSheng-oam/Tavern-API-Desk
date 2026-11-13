@@ -114,6 +114,8 @@ const DEFAULT_SETTINGS = {
     blockedSecretKeys: {},
     quickActions: [],
     quickActionPlacement: 'leftSendForm',
+    restoreQuickActionOnStartup: false,
+    lastQuickConnection: null,
     showNativeApi: true,
     quickUrls: [],
 };
@@ -330,6 +332,21 @@ function currentPresetName() {
     return normalizeText(oai_settings.preset_settings_openai || $('#settings_preset_openai option:selected').text());
 }
 
+function normalizeQuickConnection(snapshot) {
+    if (!snapshot || !Object.hasOwn(FORMATS, snapshot.format)
+        || typeof snapshot.preset !== 'string' || typeof snapshot.profileId !== 'string'
+        || typeof snapshot.model !== 'string') return null;
+    const model = snapshot.model.trim().slice(0, 500);
+    if (!model || platform.isModelAction(model)) return null;
+    return { preset: snapshot.preset, profileId: snapshot.profileId, format: snapshot.format, model };
+}
+
+function forgetQuickConnection() {
+    if (!settings().lastQuickConnection) return;
+    settings().lastQuickConnection = null;
+    scheduleSettingsSave();
+}
+
 function nativePresetByName(name) {
     return Object.hasOwn(openai_setting_names, name) ? openai_settings[openai_setting_names[name]] : null;
 }
@@ -451,6 +468,8 @@ function initializeSettings() {
         ? value.quickActionPlacement
         : 'rightSendForm';
     value.showNativeApi = value.showNativeApi !== false;
+    value.restoreQuickActionOnStartup = value.restoreQuickActionOnStartup === true;
+    value.lastQuickConnection = value.restoreQuickActionOnStartup ? normalizeQuickConnection(value.lastQuickConnection) : null;
     value.quickActions = Array.isArray(value.quickActions)
         ? value.quickActions.map(normalizeQuickAction).filter(action => action.preset || action.profileId || action.model)
         : [];
@@ -589,6 +608,10 @@ function mountExtensionSettings() {
                 <input id="tavern_api_show_native" type="checkbox"><span>显示酒馆原生 API 设置</span>
             </label>
             <small>关闭后隐藏原生连接配置、主 API 选择及聊天补全设置；可随时在此重新显示。</small>
+            <label class="checkbox_label" for="tavern_api_restore_quick">
+                <input id="tavern_api_restore_quick" type="checkbox" aria-describedby="tavern_api_restore_quick_help"><span>重启后保留 API 快速切换结果</span>
+            </label>
+            <small id="tavern_api_restore_quick_help">开启后，下一次快速切换成功时记住连接和模型。</small>
             <div class="tavern-api__settings-save"><span id="tavern_api_settings_persistence" role="status" aria-live="polite"></span>
                 <button id="tavern_api_settings_retry" class="menu_button" type="button" hidden>重试保存</button></div>
             </div>
@@ -603,6 +626,11 @@ function mountExtensionSettings() {
         scheduleSettingsSave();
     });
     section.find('#tavern_api_settings_retry').on('click', () => void enqueueOperation(persistSettingsNow));
+    section.find('#tavern_api_restore_quick').prop('checked', settings().restoreQuickActionOnStartup).on('change', function () {
+        settings().restoreQuickActionOnStartup = this.checked;
+        if (!this.checked) settings().lastQuickConnection = null;
+        void enqueueOperation(persistSettingsNow);
+    });
     renderDeskPersistence();
 }
 
@@ -720,6 +748,8 @@ function syncEditorModelToNative() {
     const config = FORMATS[format];
     const model = getEditorModel(format);
     if (platform.isModelAction(model)) return;
+    const remembered = settings().lastQuickConnection;
+    if (!presetTransitionBlocked && remembered?.format === format && model !== remembered.model) forgetQuickConnection();
     syncingEditorModel = true;
     try {
         oai_settings[config.modelField] = model;
@@ -735,6 +765,9 @@ function syncEditorModelToNative() {
 
 function handleNativeModelChange() {
     if (syncingEditorModel || extensionDisabled || teardownPending || presetTransitionBlocked || pendingOperations) return;
+    const remembered = settings().lastQuickConnection;
+    if (remembered && matchesFormat(remembered.format)
+        && normalizeText(oai_settings[FORMATS[remembered.format].modelField]) !== remembered.model) forgetQuickConnection();
     const format = normalizeFormat($('#tavern_api_format').val());
     if (!matchesFormat(format)) return;
     const profile = selectedProfile();
@@ -2159,6 +2192,7 @@ async function saveSelectedProfile() {
         settings().presetBindings[presetName] = current.id;
         settings().presetModels[presetName] = presetModelSnapshot(current, current.model);
     }
+    if (applied) forgetQuickConnection();
     scheduleSettingsSave();
     renderProfiles(current.id);
     if (await persistSettingsNow()) {
@@ -2197,6 +2231,7 @@ async function deleteSelectedProfile() {
     const content = $('<div>').append($('<p>').text(`删除 Profile“${profile.name}”？`), $('<p>').text('不会删除任何原生密钥；相关原生预设绑定会被解除。'));
     if (!await callDeskPopup(content, POPUP_TYPE.CONFIRM)) return;
     settings().profiles = profiles().filter(item => item.id !== profile.id);
+    if (settings().lastQuickConnection?.profileId === profile.id) forgetQuickConnection();
     for (const [name, id] of Object.entries(settings().presetBindings)) {
         if (id === profile.id) {
             delete settings().presetBindings[name];
@@ -3277,7 +3312,9 @@ async function applyProfileById(profileId, token = quickActionTransaction, { app
     try {
         return await enqueueOperation(async () => {
             if (token !== quickActionTransaction || generation !== profileSelectionGeneration) return false;
-            return await applyProfile(profile, generation, true, applyModel);
+            const applied = await applyProfile(profile, generation, true, applyModel);
+            if (applied && manageTransition) forgetQuickConnection();
+            return applied;
         });
     } finally {
         if (manageTransition) endPresetTransition();
@@ -3311,7 +3348,24 @@ async function runQuickAction(action, token) {
         }
         if (token !== quickActionTransaction) return;
         renderProfiles(settings().selectedProfileId);
-        if (action.model) renderModelControl(profile || selectedProfile(), action.model);
+        const format = findFormatForCurrentSource();
+        const active = profiles().find(item => item.id === settings().activeProfileId);
+        const activeProfile = active && profileMatchesNative(active, { includeModel: false }) ? active : null;
+        const connection = format && normalizeQuickConnection({
+            preset: currentPresetName(), profileId: activeProfile?.id || '', format,
+            model: normalizeText(oai_settings[FORMATS[format].modelField]),
+        });
+        if (action.model && connection) renderQuickConnectionModel(connection, activeProfile);
+        if (settings().restoreQuickActionOnStartup && connection) {
+            settings().lastQuickConnection = connection;
+            if (!await persistSettingsNow()) {
+                toastr.warning('快捷方案已应用，本次结果尚未确认保存，重启后可能恢复原设置。');
+                return;
+            }
+            if (token !== quickActionTransaction || teardownPending || extensionDisabled) return;
+        } else {
+            forgetQuickConnection();
+        }
         toastr.success(`已应用${quickActionDisplayName(action)}。`);
     } finally {
         if (quickActionBlockingToken === token) {
@@ -3645,6 +3699,7 @@ async function handleNativePresetChange() {
     beginPresetTransition();
     const generation = ++profileSelectionGeneration;
     const quickActionOwnsBlock = Boolean(quickActionBlockingToken);
+    if (!quickActionOwnsBlock) forgetQuickConnection();
     clearTimeout(presetChangeTimer);
     const presetName = currentPresetName();
     const profileId = settings().presetBindings[presetName];
@@ -3701,6 +3756,10 @@ async function handleNativePresetChange() {
 
 function handlePresetRenamed({ apiId, oldName, newName } = {}) {
     if (extensionDisabled || apiId !== 'openai' || !oldName || !newName) return;
+    if (settings().lastQuickConnection?.preset === oldName) {
+        settings().lastQuickConnection.preset = newName;
+        scheduleSettingsSave();
+    }
     const profileId = settings().presetBindings[oldName];
     if (!profileId) return;
     delete settings().presetBindings[oldName];
@@ -3714,7 +3773,9 @@ function handlePresetRenamed({ apiId, oldName, newName } = {}) {
 }
 
 function handlePresetDeleted({ apiId, name } = {}) {
-    if (extensionDisabled || apiId !== 'openai' || !name || !settings().presetBindings[name]) return;
+    if (extensionDisabled || apiId !== 'openai' || !name) return;
+    if (settings().lastQuickConnection?.preset === name) forgetQuickConnection();
+    if (!settings().presetBindings[name]) return;
     delete settings().presetBindings[name];
     delete settings().presetModels[name];
     scheduleSettingsSave();
@@ -3740,6 +3801,7 @@ function bindPresetAfterVerifiedSave(name, intent, preset) {
     if (!matchesFormat(profile.format, preset) || typeof preset[config.modelField] !== 'string') return;
     settings().presetBindings[presetName] = profile.id;
     settings().presetModels[presetName] = presetModelSnapshot(profile, preset[config.modelField]);
+    if (settings().lastQuickConnection?.preset === presetName) forgetQuickConnection();
     if (currentPresetName() === presetName && selectedProfile()?.id === profile.id
         && getEditorModel() === normalizeText(preset[config.modelField])) {
         editorModelBaseline = getEditorModel();
@@ -3930,6 +3992,7 @@ function bindEvents() {
         else selectProfile();
     });
     $('#tavern_api_format').on('change', function () {
+        forgetQuickConnection();
         clearKeyEditor();
         const format = normalizeFormat($(this).val());
         const source = FORMATS[format].source;
@@ -4001,6 +4064,8 @@ function bindEvents() {
         updatePanelVisibility();
         // Preset-driven source changes are reconciled by the AFTER handler.
         if (presetTransitionBlocked) return;
+        const remembered = settings().lastQuickConnection;
+        if (remembered && !matchesFormat(remembered.format)) forgetQuickConnection();
         const entry = Object.entries(FORMATS).find(([format]) => isFormatSupported(format) && matchesFormat(format));
         if (!entry) return;
         $('#tavern_api_format').val(entry[0]);
@@ -4044,8 +4109,60 @@ function updatePanelVisibility() {
     $('#openai_api, #rm_api_block').toggleClass('tavern-api__hide-native', hideNative);
 }
 
+function renderQuickConnectionModel(connection, profile) {
+    if (profile) {
+        if (selectedProfile()?.id !== profile.id) return;
+    } else {
+        if (selectedProfile()) return;
+        $('#tavern_api_format').val(connection.format);
+        $('#tavern_api_url').val(nativeEndpoint(connection.format));
+        renderOpenCodeFields(null, connection.format);
+        updateCredentialEditor(null);
+    }
+    renderModelControl(profile, connection.model);
+    editorModelBaseline = getEditorModel(connection.format);
+    deskEditorBaseline = deskEditorSnapshot();
+    renderStatus();
+}
+
+async function restoreQuickConnection(currentPreset) {
+    const connection = settings().lastQuickConnection;
+    if (!settings().restoreQuickActionOnStartup || !connection) return false;
+    if (connection.preset !== currentPreset || !isFormatSupported(connection.format)) {
+        forgetQuickConnection();
+        return false;
+    }
+    const profile = profiles().find(item => item.id === connection.profileId) || null;
+    if (connection.profileId ? profile?.format !== connection.format : !matchesFormat(connection.format)) {
+        forgetQuickConnection();
+        return false;
+    }
+    const generation = ++profileSelectionGeneration;
+    beginPresetTransition();
+    try {
+        if (profile && !await applyProfile(profile, generation, true, false)) return false;
+        if (generation !== profileSelectionGeneration || connection !== settings().lastQuickConnection
+            || currentPreset !== currentPresetName()) return false;
+        if (!applyExplicitModel(connection.model, connection.format)) return false;
+        settings().selectedProfileId = profile?.id || null;
+        settings().activeProfileId = profile?.id || null;
+        renderProfiles();
+        renderQuickConnectionModel(connection, profile);
+        scheduleSettingsSave();
+        return true;
+    } finally {
+        endPresetTransition();
+    }
+}
+
 async function restoreInitialProfileSelection() {
     const currentPreset = currentPresetName();
+    if (settings().lastQuickConnection) {
+        const restoring = restoreQuickConnection(currentPreset);
+        const generation = profileSelectionGeneration;
+        if (await restoring || generation !== profileSelectionGeneration || currentPreset !== currentPresetName()
+            || extensionDisabled || teardownPending) return;
+    }
     const boundId = currentPreset ? settings().presetBindings[currentPreset] : '';
     let target = profiles().find(profile => profile.id === boundId) || null;
     if (!target) target = profiles().find(profile => profile.id === settings().selectedProfileId) || null;

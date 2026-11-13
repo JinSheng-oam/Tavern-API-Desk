@@ -342,6 +342,45 @@ try {
     await run(`profiles()[0].name = ${JSON.stringify(profile.name)}; renderProfiles(profiles()[0].id)`);
     log('renaming/re-rendering an active Profile preserves its current preset model');
 
+    await run(`persistSettingsNow()`);
+    const quickRestartBaseline = structuredClone(state.settings);
+    const restartPage = await newPage();
+    const restart = restartPage.evaluate;
+    const start = () => restart('enqueueOperation(restoreInitialProfileSelection)');
+    await start();
+    assert.equal(await restart('document.getElementById("tavern_api_restore_quick").checked'), false);
+    await restart(`queueQuickAction({ model: 'quick-model' })`);
+    await restart('persistSettingsNow()');
+    await restartPage.reload();
+    await start();
+    assert.equal(await restart('getEditorModel()'), 'model-c');
+    await restart(`document.getElementById('tavern_api_restore_quick').click(); operationQueue`);
+    await restart(`queueQuickAction({ model: 'quick-model' })`);
+    assert.equal(state.settings.extension_settings.tavernApiDesk.lastQuickConnection.model, 'quick-model');
+    state.settings.oai_settings.custom_model = 'model-c'; // Host loads its original model at startup.
+    await restartPage.reload();
+    await start();
+    assert.deepEqual(await restart('[getEditorModel(), oai_settings.custom_model, settings().presetModels.A.model, profiles()[0].model]'),
+        ['quick-model', 'quick-model', 'model-c', 'profile-default']);
+    await restart(`profiles().push(normalizeProfile({ ...profiles()[0], id: 'restart-other', endpoint: 'https://restart.invalid/v1' }));
+        queueQuickAction({ profileId: 'restart-other', model: 'other-model' })`);
+    state.settings.oai_settings.custom_url = profile.endpoint;
+    await restartPage.reload();
+    await start();
+    assert.deepEqual(await restart('[settings().activeProfileId, oai_settings.custom_url, getEditorModel(), settings().presetBindings.A]'),
+        ['restart-other', 'https://restart.invalid/v1', 'other-model', profile.id]);
+    await restart(`$('#custom_model_id').val('manual-model').trigger('input'); persistSettingsNow()`);
+    assert.equal(state.settings.extension_settings.tavernApiDesk.lastQuickConnection, null);
+    await restart(`renderProfiles(); queueQuickAction({ model: 'quick-model' })`);
+    await restart(`document.getElementById('tavern_api_restore_quick').click(); operationQueue`);
+    await restartPage.reload();
+    await start();
+    assert.deepEqual(await restart('[getEditorModel(), settings().lastQuickConnection, settings().restoreQuickActionOnStartup]'), ['model-c', null, false]);
+    await restart('persistSettingsNow()');
+    await restart('teardownTavernApiDesk()');
+    state.settings = quickRestartBaseline;
+    log('opt-in quick switching survives reload without rewriting preset or profile defaults; manual edits and disabling clear it');
+
     await run('persistSettingsNow()');
     const sharedSnapshot = await run('JSON.stringify(settings())');
     const foldRequestCount = state.requests.filter(request => request.path === savePath).length;
