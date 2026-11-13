@@ -917,10 +917,19 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
         if (isOpen) return;
         isOpen = true;
         activeIndex = -1;
-        dropdown.prop('hidden', false);
+        dropdown.removeClass('is-upward').prop('hidden', false);
         toggle.attr('aria-expanded', 'true');
         toggle.find('i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
         renderDropdown();
+        const box = combobox[0].getBoundingClientRect();
+        const container = combobox[0].closest('.desk-workspace');
+        const bounds = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+        const spaceBelow = Math.min(window.innerHeight, bounds.bottom) - box.bottom;
+        const spaceAbove = box.top - Math.max(0, bounds.top);
+        const dropHeight = Math.min(280, dropdown[0].scrollHeight || 220);
+        if (spaceBelow < dropHeight + 12 && spaceAbove > spaceBelow) {
+            dropdown.addClass('is-upward');
+        }
         const list = dropdown.find('.tavern-api__combobox-list')[0];
         const selected = list.querySelector('.is-selected');
         if (selected) list.scrollTop = selected.getBoundingClientRect().top - list.getBoundingClientRect().top;
@@ -931,7 +940,7 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
         isOpen = false;
         activeIndex = -1;
         isActivelyFiltering = false;
-        dropdown.prop('hidden', true);
+        dropdown.removeClass('is-upward').prop('hidden', true);
         toggle.attr('aria-expanded', 'false');
         toggle.find('i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
     };
@@ -2840,7 +2849,9 @@ async function manageCustomModels() {
             });
             const isRemote = remote.has(model);
             const source = isRemote ? '远端' : '自定义';
-            chosenList.append($('<div class="tavern-api__model-item tavern-api__chosen-model" tabindex="0">').append(
+            chosenList.append($('<div class="tavern-api__model-item tavern-api__chosen-model" tabindex="0">')
+                .attr('data-current', String(model === draft.current))
+                .append(
                 handle,
                 $('<span class="tavern-api__drag-index">').text(index + 1),
                 input,
