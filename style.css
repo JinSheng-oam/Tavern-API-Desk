@@ -867,14 +867,32 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     cursor: pointer;
 }
 
+.tavern-api__menu-size-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+    margin-block: 0.5rem;
+}
+
+.tavern-api__menu-size-setting > select {
+    width: auto;
+    min-width: 6rem;
+}
+
 .tavern-api__quick-menu {
+    --quick-menu-width: 18rem;
+    --quick-menu-height: 28rem;
+    --quick-menu-inline-height: 70dvh;
+    --quick-menu-row-height: 2.25rem;
     display: flex;
     flex-direction: column;
     z-index: 10050;
     width: max-content;
     min-width: 9rem;
-    max-width: min(18rem, calc(100vw - 1rem));
-    max-height: min(28rem, calc(100vh - 1rem));
+    max-width: min(var(--quick-menu-width), calc(100dvw - 1rem));
+    max-height: min(var(--quick-menu-height), calc(100dvh - 1rem));
     margin: 0;
     overflow-x: hidden;
     overflow-y: auto;
@@ -886,6 +904,20 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     filter: none !important;
     list-style: none;
     transition: none !important;
+}
+
+.tavern-api__quick-menu[data-menu-size="compact"] {
+    --quick-menu-width: 14rem;
+    --quick-menu-height: 19rem;
+    --quick-menu-inline-height: 48dvh;
+    --quick-menu-row-height: 1.9rem;
+}
+
+.tavern-api__quick-menu[data-menu-size="large"] {
+    --quick-menu-width: 24rem;
+    --quick-menu-height: 36rem;
+    --quick-menu-inline-height: 82dvh;
+    --quick-menu-row-height: 2.75rem;
 }
 
 .tavern-api__quick-menu--extensions {
@@ -915,7 +947,7 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     min-width: 0 !important;
     max-width: 100% !important;
     max-height: min(70vh, calc(100vh - 2rem));
-    max-height: min(70dvh, calc(100dvh - 2rem));
+    max-height: min(var(--quick-menu-inline-height), calc(100dvh - 2rem));
     flex-direction: column;
     box-sizing: border-box;
     margin: 0;
@@ -938,6 +970,7 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     display: flex;
     flex: 0 0 auto;
     min-width: 0;
+    min-height: var(--quick-menu-row-height);
     align-items: center;
     overflow: hidden;
     padding: 5px;

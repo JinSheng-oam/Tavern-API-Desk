@@ -280,7 +280,12 @@ try {
     await run(`document.querySelector('#tavern_api_quick_inline_menu .tavern-api__quick-back').click()`);
     assert.equal(await run(`document.getElementById('extensionsMenu').classList.contains('tavern-api__menu-level-2')`), false);
     assert.equal(await run(`Boolean(document.getElementById('tavern_api_quick_inline_menu'))`), false);
-    assert.equal(await run(`getComputedStyle(document.getElementById('fixture_host_menu_item')).display !== 'none'`), true);
+    assert.deepEqual(await run(`[
+        $('#extensionsMenu').is(':visible'), $('#fixture_host_menu_item').is(':visible'), document.activeElement.id
+    ]`), [true, true, 'tavern_api_quick_menu_entry']);
+    await run(`openInlineExtensionsQuickActionMenu(document.getElementById('tavern_api_quick_menu_entry'));
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', bubbles:true, cancelable:true }));`);
+    assert.deepEqual(await run(`[$('#fixture_host_menu_item').is(':visible'), document.activeElement.id]`), [true, 'tavern_api_quick_menu_entry']);
     await run(`settings().quickActionPlacement = 'disabled'; ensureQuickActionEntries()`);
     log('mobile inline quick action menu displays correctly inside extensionsMenu without collapsing and returns on back click');
 
@@ -553,6 +558,25 @@ try {
     state.settings.extension_settings.tavernApiDesk.quickActions.forEach((action, i) => { action.sequence = -i; });
     await orderPage.reload();
     assert.deepEqual(await readMenuOrder(), { floating: reordered, inline: reordered });
+    const compactSize = await order(`(async () => {
+        $('#tavern_api_quick_menu_size').val('compact').trigger('change');
+        await persistSettingsNow();
+        openQuickActionMenu(document.getElementById('extensionsMenuButton'), 'leftSendForm', { focusFirst: false });
+        const height = document.querySelector('[data-tavern-api-quick-action]').getBoundingClientRect().height;
+        closeQuickActionMenu();
+        return height;
+    })()`);
+    await orderPage.reload();
+    assert.equal(await order(`$('#tavern_api_quick_menu_size').val()`), 'compact');
+    const largeSize = await order(`(() => {
+        $('#tavern_api_quick_menu_size').val('large').trigger('change');
+        openQuickActionMenu(document.getElementById('extensionsMenuButton'), 'leftSendForm', { focusFirst: false });
+        const height = document.querySelector('[data-tavern-api-quick-action]').getBoundingClientRect().height;
+        closeQuickActionMenu();
+        return height;
+    })()`);
+    assert.ok(largeSize > compactSize);
+    log('quick menu size changes rendered row height and persists across reload');
     await order('teardownTavernApiDesk()');
     log('saved quick action order matches both menu layouts immediately and after reload despite stale sequence values');
 

@@ -114,6 +114,7 @@ const DEFAULT_SETTINGS = {
     blockedSecretKeys: {},
     quickActions: [],
     quickActionPlacement: 'leftSendForm',
+    quickActionMenuSize: 'normal',
     restoreQuickActionOnStartup: false,
     lastQuickConnection: null,
     showNativeApi: true,
@@ -469,6 +470,8 @@ function initializeSettings() {
         ? value.quickActionPlacement
         : 'rightSendForm';
     value.showNativeApi = value.showNativeApi !== false;
+    value.quickActionMenuSize = ['compact', 'normal', 'large'].includes(value.quickActionMenuSize)
+        ? value.quickActionMenuSize : 'normal';
     value.restoreQuickActionOnStartup = value.restoreQuickActionOnStartup === true;
     value.lastQuickConnection = value.restoreQuickActionOnStartup ? normalizeQuickConnection(value.lastQuickConnection) : null;
     value.quickActions = Array.isArray(value.quickActions)
@@ -613,6 +616,12 @@ function mountExtensionSettings() {
                 <input id="tavern_api_restore_quick" type="checkbox" aria-describedby="tavern_api_restore_quick_help"><span>重启后保留 API 快速切换结果</span>
             </label>
             <small id="tavern_api_restore_quick_help">开启后，下一次快速切换成功时记住连接和模型。</small>
+            <label class="tavern-api__menu-size-setting" for="tavern_api_quick_menu_size">
+                <span>API 快速切换菜单大小</span>
+                <select id="tavern_api_quick_menu_size" class="text_pole">
+                    <option value="compact">紧凑</option><option value="normal">标准</option><option value="large">宽大</option>
+                </select>
+            </label>
             <div class="tavern-api__settings-save"><span id="tavern_api_settings_persistence" role="status" aria-live="polite"></span>
                 <button id="tavern_api_settings_retry" class="menu_button" type="button" hidden>重试保存</button></div>
             </div>
@@ -627,6 +636,11 @@ function mountExtensionSettings() {
         scheduleSettingsSave();
     });
     section.find('#tavern_api_settings_retry').on('click', () => void enqueueOperation(persistSettingsNow));
+    section.find('#tavern_api_quick_menu_size').val(settings().quickActionMenuSize).on('change', function () {
+        settings().quickActionMenuSize = this.value;
+        closeQuickActionMenu();
+        scheduleSettingsSave();
+    });
     section.find('#tavern_api_restore_quick').prop('checked', settings().restoreQuickActionOnStartup).on('change', function () {
         settings().restoreQuickActionOnStartup = this.checked;
         if (!this.checked) settings().lastQuickConnection = null;
@@ -3464,6 +3478,12 @@ function openInlineExtensionsQuickActionMenu(anchor) {
     quickActionMenu?.find('[data-tavern-api-actionable="true"]').first().trigger('focus');
 }
 
+function returnToExtensionsMenu(anchor) {
+    closeQuickActionMenu();
+    reopenExtensionsMenuIfClosed();
+    anchor.focus?.({ preventScroll: true });
+}
+
 function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = true, inline = false } = {}) {
     if (quickActionMenu?.data('anchor') === anchor) {
         if (toggle) closeQuickActionMenu();
@@ -3477,6 +3497,7 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="menu" aria-label="API 快速切换方案" tabindex="-1">')
         .toggleClass('tavern-api__quick-menu--extensions', placement === 'extensionsMenu')
         .toggleClass('tavern-api__quick-menu--inline', inline)
+        .attr('data-menu-size', settings().quickActionMenuSize)
         .data('anchor', anchor);
     if (inline) menu.attr('id', 'tavern_api_quick_inline_menu');
     menu.appendTo(inline ? extensionsMenu : document.body);
@@ -3488,10 +3509,11 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
                 $('<div class="qr--button-icon fa-solid fa-arrow-left">'),
                 $('<div class="qr--button-label">').text('返回扩展菜单'),
             )
-            .on('click', () => {
-                closeQuickActionMenu();
-                reopenExtensionsMenuIfClosed();
-                anchor.focus?.({ preventScroll: true });
+            .on('click', event => {
+                // After removing the submenu, the host's document listener
+                // would see this detached target as an outside click.
+                event.stopPropagation();
+                returnToExtensionsMenu(anchor);
             }));
     }
     const settingsItem = $('<li class="list-group-item ctx-header tavern-api__quick-manage" role="menuitem" tabindex="0" data-tavern-api-actionable="true" title="便捷按钮管理">')
@@ -3567,10 +3589,14 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     }).on('keydown.tavernApiDeskMenu', event => {
         if (event.key === 'Escape') {
             event.preventDefault();
-            const inline = menu[0].classList.contains('tavern-api__quick-menu--inline');
+            if (inline) {
+                event.stopPropagation();
+                returnToExtensionsMenu(anchor);
+                return;
+            }
             const anchorVisible = anchor.isConnected && anchor.getClientRects().length > 0;
             closeQuickActionMenu();
-            (inline || anchorVisible ? anchor : document.getElementById('extensionsMenuButton'))?.focus?.({ preventScroll: true });
+            (anchorVisible ? anchor : document.getElementById('extensionsMenuButton'))?.focus?.({ preventScroll: true });
         }
         if (event.key === 'Tab') closeQuickActionMenu();
     });
