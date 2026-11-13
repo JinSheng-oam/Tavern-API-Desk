@@ -102,6 +102,7 @@ const FORMATS = Object.freeze({
         endpointInput: '#openai_reverse_proxy',
     },
 });
+const QUICK_MENU_WIDTH = { min: 140, max: 600 };
 const DEFAULT_SETTINGS = {
     schemaVersion: SCHEMA_VERSION,
     profiles: [],
@@ -115,6 +116,9 @@ const DEFAULT_SETTINGS = {
     quickActions: [],
     quickActionPlacement: 'leftSendForm',
     quickActionMenuSize: 'normal',
+    quickActionMenuWidth: null,
+    quickActionMenuShowChannel: true,
+    quickActionMenuShowModel: true,
     restoreQuickActionOnStartup: false,
     lastQuickConnection: null,
     showNativeApi: true,
@@ -171,6 +175,11 @@ const activeFetchControllers = new Set();
 
 function settings() {
     return extension_settings[MODULE_NAME];
+}
+
+function normalizeQuickMenuWidth(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    return Math.min(QUICK_MENU_WIDTH.max, Math.max(QUICK_MENU_WIDTH.min, Math.round(value)));
 }
 
 function profiles() {
@@ -475,6 +484,9 @@ function initializeSettings() {
     value.showNativeApi = value.showNativeApi !== false;
     value.quickActionMenuSize = ['compact', 'normal', 'large'].includes(value.quickActionMenuSize)
         ? value.quickActionMenuSize : 'normal';
+    value.quickActionMenuWidth = normalizeQuickMenuWidth(value.quickActionMenuWidth);
+    value.quickActionMenuShowChannel = value.quickActionMenuShowChannel !== false;
+    value.quickActionMenuShowModel = value.quickActionMenuShowModel !== false;
     value.restoreQuickActionOnStartup = value.restoreQuickActionOnStartup === true;
     value.lastQuickConnection = value.restoreQuickActionOnStartup ? normalizeQuickConnection(value.lastQuickConnection) : null;
     value.quickActions = Array.isArray(value.quickActions)
@@ -625,6 +637,19 @@ function mountExtensionSettings() {
                     <option value="compact">紧凑</option><option value="normal">标准</option><option value="large">宽大</option>
                 </select>
             </label>
+            <label class="tavern-api__menu-size-setting" for="tavern_api_quick_menu_width">
+                <span>自定义菜单宽度（px）</span>
+                <input id="tavern_api_quick_menu_width" class="text_pole" type="number" inputmode="numeric"
+                    min="${QUICK_MENU_WIDTH.min}" max="${QUICK_MENU_WIDTH.max}" step="1" placeholder="跟随档位"
+                    aria-describedby="tavern_api_quick_menu_width_help">
+            </label>
+            <small id="tavern_api_quick_menu_width_help">${QUICK_MENU_WIDTH.min}–${QUICK_MENU_WIDTH.max} px，留空跟随大小档位，过宽时自动适应屏幕。</small>
+            <label class="checkbox_label" for="tavern_api_quick_menu_show_channel">
+                <input id="tavern_api_quick_menu_show_channel" type="checkbox"><span>显示快速切换方案的渠道</span>
+            </label>
+            <label class="checkbox_label" for="tavern_api_quick_menu_show_model">
+                <input id="tavern_api_quick_menu_show_model" type="checkbox"><span>显示快速切换方案的模型</span>
+            </label>
             <div class="tavern-api__settings-save"><span id="tavern_api_settings_persistence" role="status" aria-live="polite"></span>
                 <button id="tavern_api_settings_retry" class="menu_button" type="button" hidden>重试保存</button></div>
             </div>
@@ -639,11 +664,28 @@ function mountExtensionSettings() {
         scheduleSettingsSave();
     });
     section.find('#tavern_api_settings_retry').on('click', () => void enqueueOperation(persistSettingsNow));
-    section.find('#tavern_api_quick_menu_size').val(settings().quickActionMenuSize).on('change', function () {
-        settings().quickActionMenuSize = this.value;
+    const saveQuickMenuSettings = () => {
         closeQuickActionMenu();
         scheduleSettingsSave();
+    };
+    section.find('#tavern_api_quick_menu_size').val(settings().quickActionMenuSize).on('change', function () {
+        settings().quickActionMenuSize = this.value;
+        saveQuickMenuSettings();
     });
+    section.find('#tavern_api_quick_menu_width').val(settings().quickActionMenuWidth ?? '').on('change', function () {
+        settings().quickActionMenuWidth = normalizeQuickMenuWidth(this.valueAsNumber);
+        this.value = settings().quickActionMenuWidth ?? '';
+        saveQuickMenuSettings();
+    });
+    for (const [field, key] of [
+        ['channel', 'quickActionMenuShowChannel'],
+        ['model', 'quickActionMenuShowModel'],
+    ]) {
+        section.find(`#tavern_api_quick_menu_show_${field}`).prop('checked', settings()[key]).on('change', function () {
+            settings()[key] = this.checked;
+            saveQuickMenuSettings();
+        });
+    }
     section.find('#tavern_api_restore_quick').prop('checked', settings().restoreQuickActionOnStartup).on('change', function () {
         settings().restoreQuickActionOnStartup = this.checked;
         if (!this.checked) settings().lastQuickConnection = null;
@@ -3573,8 +3615,12 @@ function queueQuickAction(action) {
 function closeQuickActionMenu() {
     const menuElement = quickActionMenu?.[0];
     const anchor = quickActionMenu?.data('anchor');
-    if (menuElement?.classList.contains('tavern-api__quick-menu--inline') || document.getElementById('tavern_api_quick_inline_menu')) {
-        document.getElementById('extensionsMenu')?.classList.remove('tavern-api__menu-level-2');
+    const extensionsMenu = menuElement?.closest('#extensionsMenu.tavern-api__menu-level-2')
+        || document.querySelector('#extensionsMenu.tavern-api__menu-level-2');
+    if (extensionsMenu) {
+        extensionsMenu.classList.remove('tavern-api__menu-level-2');
+        extensionsMenu.removeAttribute('data-tavern-api-menu-size');
+        extensionsMenu.style.removeProperty('--tavern-api-quick-menu-custom-width');
     }
     anchor?.setAttribute?.('aria-expanded', 'false');
     quickActionPopper?.destroy?.();
@@ -3615,12 +3661,14 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     const extensionsMenu = inline ? document.getElementById('extensionsMenu') : null;
     inline = Boolean(extensionsMenu);
     if (inline) extensionsMenu.classList.add('tavern-api__menu-level-2');
-    const actions = settings().quickActions;
+    const { quickActions: actions, quickActionMenuSize, quickActionMenuWidth, quickActionMenuShowChannel, quickActionMenuShowModel } = settings();
     const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="menu" aria-label="API 快速切换方案" tabindex="-1">')
         .toggleClass('tavern-api__quick-menu--extensions', placement === 'extensionsMenu')
         .toggleClass('tavern-api__quick-menu--inline', inline)
-        .attr('data-menu-size', settings().quickActionMenuSize)
         .data('anchor', anchor);
+    const sizeTarget = extensionsMenu || menu[0];
+    sizeTarget.setAttribute('data-tavern-api-menu-size', quickActionMenuSize);
+    if (quickActionMenuWidth !== null) sizeTarget.style.setProperty('--tavern-api-quick-menu-custom-width', `${quickActionMenuWidth}px`);
     if (inline) menu.attr('id', 'tavern_api_quick_inline_menu');
     menu.appendTo(inline ? extensionsMenu : document.body);
     quickActionMenu = menu;
@@ -3655,10 +3703,11 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
         const name = quickActionDisplayName(action, index);
         const current = action.id === currentId;
         const actionProfile = profiles().find(item => item.id === action.profileId);
-        const summary = current ? [profile?.name || FORMATS[connection.format].label, connection.model]
-            : [actionProfile?.name || action.preset, action.model || actionProfile?.model];
+        const channel = current ? profile?.name || FORMATS[connection.format].label : actionProfile?.name || action.preset;
+        const model = current ? connection.model : action.model || actionProfile?.model;
+        const summary = [quickActionMenuShowChannel && channel, quickActionMenuShowModel && model].filter(Boolean).join(' · ');
         const label = $('<div class="qr--button-label tavern-api__quick-menu-label">').append($('<span>').text(name));
-        if (summary.some(Boolean)) label.append($('<small>').text(summary.filter(Boolean).join(' · ')));
+        if (summary) label.append($('<small>').text(summary));
         menu.append($('<li class="list-group-item ctx-item" role="menuitem" tabindex="0" data-tavern-api-actionable="true">')
             .attr({ title: name, 'data-tavern-api-quick-action': action.id })
             .attr('aria-current', current ? 'true' : null)

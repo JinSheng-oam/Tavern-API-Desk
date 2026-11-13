@@ -609,6 +609,70 @@ try {
     })()`);
     assert.ok(largeSize > compactSize);
     log('quick menu size changes rendered row height and persists across reload');
+
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 1, mobile: true }, orderPage.sessionId);
+    await order(`
+        settings().quickActionPlacement = 'extensionsMenu';
+        ensureQuickActionEntries();
+        document.getElementById('extensionsMenu').style.width = '100%';
+        $('#tavern_api_quick_menu_size').val('compact').trigger('change');
+    `);
+    const readInline = () => order(`(() => {
+        const host = document.getElementById('extensionsMenu');
+        if (!$(host).is(':visible')) document.getElementById('extensionsMenuButton').click();
+        const firstLevelWidth = host.getBoundingClientRect().width;
+        document.getElementById('tavern_api_quick_menu_entry').click();
+        const menu = document.getElementById('tavern_api_quick_inline_menu');
+        const { width, left, right } = host.getBoundingClientRect();
+        const item = menu.querySelector('[data-tavern-api-quick-action]');
+        const summary = item.querySelector('small')?.textContent ?? null;
+        menu.querySelector('.tavern-api__quick-back').click();
+        return { width, firstLevelWidth, restored: host.getBoundingClientRect().width, fits: left >= 0 && right <= innerWidth, summary };
+    })()`);
+    const compact = await readInline();
+    assert.ok(compact.fits && compact.width < compact.firstLevelWidth);
+    assert.equal(compact.restored, compact.firstLevelWidth);
+    assert.equal(compact.summary, profile.name + ' · model-a');
+    await order(`
+        $('#tavern_api_quick_menu_width').val('180').trigger('change');
+        document.getElementById('tavern_api_quick_menu_show_channel').click();
+        persistSettingsNow()
+    `);
+    await orderPage.reload();
+    await order(`document.getElementById('extensionsMenu').style.width = '100%';`);
+    assert.deepEqual(await order(`[
+        document.getElementById('tavern_api_quick_menu_width').value,
+        document.getElementById('tavern_api_quick_menu_show_channel').checked,
+        document.getElementById('tavern_api_quick_menu_show_model').checked
+    ]`), ['180', false, true]);
+    const custom = await readInline();
+    assert.equal(custom.width, 180);
+    assert.equal(custom.summary, 'model-a');
+    assert.equal(custom.restored, custom.firstLevelWidth);
+    await order(`
+        $('#tavern_api_quick_menu_width').val('600').trigger('change');
+        document.getElementById('tavern_api_quick_menu_show_channel').click();
+        document.getElementById('tavern_api_quick_menu_show_model').click();
+    `);
+    const capped = await readInline();
+    assert.ok(capped.fits && capped.width > custom.width);
+    assert.equal(capped.summary, profile.name);
+    await order(`
+        $('#tavern_api_quick_menu_width').val('').trigger('change');
+        document.getElementById('tavern_api_quick_menu_show_channel').click();
+    `);
+    const namesOnly = await readInline();
+    assert.equal(namesOnly.width, compact.width);
+    assert.equal(namesOnly.summary, null);
+    assert.deepEqual(await order(`(() => {
+        $('#tavern_api_quick_menu_width').val('180').trigger('change');
+        openQuickActionMenu(document.getElementById('extensionsMenuButton'), 'leftSendForm', { focusFirst:false });
+        const menu = document.querySelector('.tavern-api__quick-menu');
+        const result = [menu.getBoundingClientRect().width, Boolean(menu.querySelector('small'))];
+        closeQuickActionMenu();
+        return result;
+    })()`), [180, false]);
+    log('mobile submenu honors preset and custom widths, restores host width, and both menu layouts honor detail toggles');
     await order('teardownTavernApiDesk()');
     log('saved quick action order matches both menu layouts immediately and after reload despite stale sequence values');
 

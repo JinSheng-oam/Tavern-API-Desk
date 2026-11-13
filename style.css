@@ -893,17 +893,28 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     min-width: 6rem;
 }
 
-.tavern-api__quick-menu {
+.tavern-api__menu-size-setting > input {
+    width: 7.5rem;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+#extensionsMenu.tavern-api__menu-level-2,
+.tavern-api__quick-menu:not(.tavern-api__quick-menu--inline) {
     --quick-menu-width: 18rem;
-    --quick-menu-height: 28rem;
     --quick-menu-inline-height: 70dvh;
+    --quick-menu-height: 28rem;
     --quick-menu-row-height: 2.25rem;
+}
+
+.tavern-api__quick-menu {
     display: flex;
     flex-direction: column;
     z-index: 10050;
-    width: max-content;
-    min-width: 9rem;
-    max-width: min(var(--quick-menu-width), calc(100dvw - 1rem));
+    box-sizing: border-box;
+    width: var(--tavern-api-quick-menu-custom-width, max-content);
+    min-width: min(var(--tavern-api-quick-menu-custom-width, 9rem), calc(100dvw - 1rem));
+    max-width: min(var(--tavern-api-quick-menu-custom-width, var(--quick-menu-width)), calc(100dvw - 1rem));
     max-height: min(var(--quick-menu-height), calc(100dvh - 1rem));
     margin: 0;
     overflow-x: hidden;
@@ -918,17 +929,17 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
     transition: none !important;
 }
 
-.tavern-api__quick-menu[data-menu-size="compact"] {
+:is(#extensionsMenu.tavern-api__menu-level-2, .tavern-api__quick-menu)[data-tavern-api-menu-size="compact"] {
     --quick-menu-width: 14rem;
-    --quick-menu-height: 19rem;
     --quick-menu-inline-height: 48dvh;
+    --quick-menu-height: 19rem;
     --quick-menu-row-height: 1.9rem;
 }
 
-.tavern-api__quick-menu[data-menu-size="large"] {
+:is(#extensionsMenu.tavern-api__menu-level-2, .tavern-api__quick-menu)[data-tavern-api-menu-size="large"] {
     --quick-menu-width: 24rem;
-    --quick-menu-height: 36rem;
     --quick-menu-inline-height: 82dvh;
+    --quick-menu-height: 36rem;
     --quick-menu-row-height: 2.75rem;
 }
 
@@ -940,6 +951,10 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
 }
 
 #extensionsMenu.tavern-api__menu-level-2 {
+    box-sizing: border-box;
+    width: min(var(--tavern-api-quick-menu-custom-width, var(--quick-menu-width)), calc(100dvw - 1rem)) !important;
+    min-width: 0 !important;
+    max-width: calc(100dvw - 1rem) !important;
     max-height: calc(100vh - 1rem);
     max-height: calc(100dvh - 1rem);
     overflow: hidden;
@@ -995,6 +1010,11 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
 
 .tavern-api__quick-menu > [aria-current="true"] {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+}
+
+.tavern-api__quick-menu-label {
+    min-width: 0;
+    flex: 1 1 auto;
 }
 
 .tavern-api__quick-menu-label > :is(span, small) {
