@@ -534,6 +534,18 @@
     opacity: 0.8;
 }
 
+.tavern-api__model-search-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem 0.6rem;
+}
+
+.tavern-api__model-search-meta > label {
+    margin: 0;
+}
+
 dialog.popup:has(.tavern-api__model-browser) {
     width: min(96dvw, 76rem);
     height: min(88dvh, 46rem) !important;
@@ -979,6 +991,22 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
 
 .tavern-api__quick-menu > [data-tavern-api-actionable="true"] {
     cursor: pointer;
+}
+
+.tavern-api__quick-menu > [aria-current="true"] {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+}
+
+.tavern-api__quick-menu-label > :is(span, small) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tavern-api__quick-menu-label > small {
+    font-size: 0.78em;
+    opacity: 0.8;
 }
 
 .tavern-api__quick-menu > [data-tavern-api-actionable="true"]:focus-visible {

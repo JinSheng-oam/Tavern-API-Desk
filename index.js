@@ -153,6 +153,8 @@ let editorModelBaseline = '';
 let quickActionQueue = Promise.resolve();
 let quickActionTransaction = 0;
 let quickActionBlockingToken = 0;
+let lastAppliedQuickAction = null;
+let restoringQuickPreset = false;
 let quickPresetWaitCancel = null;
 let quickActionMenu = null;
 let quickActionPopper = null;
@@ -339,7 +341,8 @@ function normalizeQuickConnection(snapshot) {
         || typeof snapshot.model !== 'string') return null;
     const model = snapshot.model.trim().slice(0, 500);
     if (!model || platform.isModelAction(model)) return null;
-    return { preset: snapshot.preset, profileId: snapshot.profileId, format: snapshot.format, model };
+    const actionId = typeof snapshot.actionId === 'string' ? snapshot.actionId : '';
+    return { preset: snapshot.preset, profileId: snapshot.profileId, format: snapshot.format, model, actionId };
 }
 
 function forgetQuickConnection() {
@@ -1483,9 +1486,12 @@ async function applyProfile(profile, expectedGeneration = profileSelectionGenera
             renderProfiles(settings().selectedProfileId);
             return false;
         }
-        profile.secretId = targetSecretId;
-        profile.needsSecret = expectedSecret;
-        if (expectedSecret) toastr.warning('原绑定密钥不存在，已改用安全空密钥；请重新绑定后再连接。');
+        if (profile.secretId) {
+            toastr.warning(MISSING_SYNCED_SECRET_MESSAGE);
+        } else {
+            profile.secretId = targetSecretId;
+            profile.needsSecret = expectedSecret;
+        }
     } else {
         const activated = await rotateSecretVerified(config.secretKey, targetSecretId);
         if (expectedGeneration !== profileSelectionGeneration || extensionDisabled) {
@@ -2342,7 +2348,9 @@ async function readBoundSecret(profile) {
         toastr.info('当前 Profile 未绑定密钥。');
         return null;
     }
-    const result = await lookupSecretBounded(FORMATS[profile.format].secretKey, profile.secretId, { allowUnknownPermission: true });
+    const result = await lookupSecretBounded(FORMATS[profile.format].secretKey, profile.secretId, {
+        allowUnknownPermission: true, verifyBinding: isBoundSecretMissing(profile),
+    });
     if (result.status !== 'ok') {
         const message = result.status === 'denied' ? keyExposureGuidance().warning
             : result.status === 'missing' ? '找不到此配置绑定的密钥。请使用原生密钥管理检查，或重新填写并保存密钥。'
@@ -2458,11 +2466,16 @@ async function canReadSecretPlaintext() {
     return !platform.preferBackendModels || await secretExposureStatus() === 'enabled';
 }
 
-async function lookupSecretBounded(key, id, { allowUnknownPermission = false } = {}) {
+async function lookupSecretBounded(key, id, { allowUnknownPermission = false, verifyBinding = false } = {}) {
     if (extensionDisabled || teardownPending) return { status: 'failed' };
     const exposure = await secretExposureStatus();
     if (exposure === 'disabled') return { status: 'denied' };
     if (platform.preferBackendModels && exposure === 'unknown' && !allowUnknownPermission) return { status: 'permission-unavailable' };
+    if (verifyBinding) {
+        const state = await readAuthoritativeSecretState();
+        if (!state) return { status: 'failed' };
+        if (!state[key]?.some(entry => entry.id === id)) return { status: 'missing' };
+    }
     let failure = exposure === 'unknown' && platform.preferBackendModels ? 'permission-unavailable' : 'failed';
     try {
         const { response, data } = await fetchJsonWithTimeout('/api/secrets/find', {
@@ -2508,7 +2521,7 @@ async function fetchModelsForProfile(profile, endpoint) {
     if (usesProxyProfile(profile.format, endpoint) && !proxy) throw new Error('代理凭据绑定缺失，请先保存配置。');
     const backendOnly = platform.preferBackendModels || profile.format !== 'openai';
     let frontendError = null;
-    if (!backendOnly) try {
+    if (!backendOnly && !isBoundSecretMissing(profile)) try {
         const key = profile.secretId ? await findSecretBounded(config.secretKey, profile.secretId) : '';
         if (profile.secretId && key === null) throw new Error('浏览器无权读取已保存 Key');
         const headers = { Accept: 'application/json', ...customHeaderObject(profile.includeHeaders) };
@@ -2671,10 +2684,15 @@ async function manageCustomModels() {
     const searchInput = $('<input class="text_pole" type="search" autocomplete="off" placeholder="搜索远端模型" aria-label="搜索远端模型">');
     const clearSearch = $('<button type="button" class="menu_button" title="清空搜索" aria-label="清空模型搜索"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>');
     const searchCount = $('<small class="tavern-api__model-search-count" role="status" aria-live="polite">');
+    const unretainedOnly = $('<input type="checkbox">');
+    const searchMeta = $('<div class="tavern-api__model-search-meta">').append(
+        $('<label class="checkbox_label">').append(unretainedOnly, $('<span>').text('仅看未保留')),
+        searchCount,
+    );
     remoteSearch.append(searchInput, clearSearch);
     const remoteList = $('<div class="tavern-api__model-list">');
     const chosenList = $('<div class="tavern-api__model-list">');
-    remotePanel.append($('<h4>远端模型</h4>'), remoteSearch, remoteActions, searchCount, remoteList);
+    remotePanel.append($('<h4>远端模型</h4>'), remoteSearch, remoteActions, searchMeta, remoteList);
     const chosenHeading = $('<h4>');
     chosenPanel.append(chosenHeading, chosenActions, resetActions, chosenList);
     columns.append(remotePanel, chosenPanel);
@@ -2699,17 +2717,22 @@ async function manageCustomModels() {
         renderManager();
         toastr.info(`已选用模型：“${normalized}”`);
     };
-    const filteredRemoteModels = () => draft.fetched.filter(model => matchesModelSearch(model, searchInput.val()));
+    const filteredRemoteModels = (selected = new Set(draft.available)) => {
+        const query = searchInput.val();
+        const onlyNew = unretainedOnly.prop('checked');
+        return draft.fetched.filter(model => (!onlyNew || !selected.has(model)) && matchesModelSearch(model, query));
+    };
     const renderManager = ({ remoteOnly = false } = {}) => {
         ensureCurrent();
         const selected = new Set(draft.available);
         const remote = new Set(draft.fetched);
-        const matching = filteredRemoteModels();
+        const matching = filteredRemoteModels(selected);
         searchCount.text(`显示 ${matching.length} / ${draft.fetched.length} 个模型`);
         searchCount.attr('title', '支持部分名称和按顺序输入不连续字符；批量操作只影响搜索结果。');
         remoteList.empty();
         if (!draft.fetched.length) remoteList.append($('<div class="tavern-api__empty-state">').text('尚无当前 URL 的远端快照'));
-        else if (!matching.length) remoteList.append($('<div class="tavern-api__empty-state">').text('没有匹配的远端模型，请尝试其他关键词或清空搜索'));
+        else if (!matching.length) remoteList.append($('<div class="tavern-api__empty-state">').text(unretainedOnly.prop('checked')
+            ? '没有匹配的未保留模型' : '没有匹配的远端模型，请尝试其他关键词或清空搜索'));
         for (const model of matching) {
             const isCurrent = model === draft.current;
             const checkbox = $('<input type="checkbox">').prop('checked', selected.has(model)).attr('aria-label', `选择 ${model}`);
@@ -2857,6 +2880,7 @@ async function manageCustomModels() {
             event.stopPropagation(); // Host Popup treats Enter as confirmation.
         }
     });
+    unretainedOnly.on('change', () => renderManager({ remoteOnly: true }));
     clearSearch.on('click', () => {
         searchInput.val('');
         renderManager({ remoteOnly: true });
@@ -3276,6 +3300,28 @@ function findFormatForCurrentSource() {
     return Object.keys(FORMATS).find(format => isFormatSupported(format) && matchesFormat(format)) || '';
 }
 
+function readQuickConnection(actionId = '') {
+    const format = findFormatForCurrentSource();
+    const active = profiles().find(item => item.id === settings().activeProfileId);
+    const profile = active && profileMatchesNative(active, { includeModel: false }) ? active : null;
+    return { profile, connection: format ? normalizeQuickConnection({
+        actionId, preset: currentPresetName(), profileId: profile?.id || '', format,
+        model: normalizeText(oai_settings[FORMATS[format].modelField]),
+    }) : null };
+}
+
+function currentQuickActionId(connection, profile) {
+    if (!connection || presetTransitionBlocked || settings().blockedSecretKeys[FORMATS[connection.format].secretKey]) return '';
+    if (profile && !usesProxyProfile(profile.format, profile.endpoint)
+        && (isBoundSecretMissing(profile) || profile.secretId !== getActiveSecret(FORMATS[profile.format].secretKey)?.id)) return '';
+    const remembered = lastAppliedQuickAction;
+    if (!remembered || ['preset', 'profileId', 'format', 'model'].some(key => remembered[key] !== connection[key])) return '';
+    const action = settings().quickActions.find(item => item.id === remembered.actionId);
+    return action && (!action.preset || action.preset === connection.preset)
+        && (!action.profileId || action.profileId === connection.profileId)
+        && (!action.model || action.model === connection.model) ? action.id : '';
+}
+
 function applyExplicitModel(model, preferredFormat = '') {
     const value = normalizeText(model);
     if (!value) return true;
@@ -3334,6 +3380,46 @@ async function selectPresetForQuickAction(name, token) {
     return await after;
 }
 
+async function rollbackQuickAction(snapshot, token) {
+    let restored = true;
+    if (currentPresetName() !== snapshot.preset || $('#settings_preset_openai').val() !== snapshot.presetValue) {
+        restoringQuickPreset = true;
+        try {
+            restored = !teardownPending && await selectPresetForQuickAction(snapshot.preset, token);
+        } finally {
+            restoringQuickPreset = false;
+        }
+    }
+    restoreNative(snapshot.native);
+    oai_settings.custom_prompt_post_processing = snapshot.postProcessing;
+    $('#custom_prompt_post_processing').val(snapshot.postProcessing);
+    $('#openai_proxy_preset').val(snapshot.proxyPreset);
+    syncNativePostProcessing();
+    const authoritative = await readAuthoritativeSecretState();
+    for (const [key, id] of snapshot.credentials) {
+        if (authoritative && (authoritative[key]?.find(entry => entry.active)?.id || '') === id) continue;
+        if (!authoritative && !id) continue;
+        const verified = id ? await rotateSecretVerified(key, id) : Boolean(await ensureEmptySecret(key));
+        if (!verified) {
+            setCredentialSafetyBlock(key, '快捷切换失败，且无法确认原密钥已恢复；生成已阻断。');
+            restored = false;
+        } else if (!snapshot.blocked[key]) {
+            clearCredentialSafetyBlock(key);
+        }
+    }
+    if (!authoritative) restored = false;
+    Object.assign(settings().blockedSecretKeys, snapshot.blocked);
+    if (!restored) {
+        const format = findFormatForCurrentSource();
+        if (format) setCredentialSafetyBlock(FORMATS[format].secretKey, '无法完整恢复上一个连接，请重新应用 API 配置。');
+    }
+    settings().selectedProfileId = snapshot.selectedId;
+    settings().activeProfileId = restored ? snapshot.activeId : null;
+    renderProfiles();
+    scheduleSettingsSave();
+    return restored;
+}
+
 async function applyProfileById(profileId, token = quickActionTransaction, { applyModel = true, manageTransition = true } = {}) {
     const profile = profiles().find(item => item.id === profileId);
     if (!profile || token !== quickActionTransaction) return false;
@@ -3357,37 +3443,59 @@ async function applyProfileById(profileId, token = quickActionTransaction, { app
 async function runQuickAction(action, token) {
     if (extensionDisabled || teardownPending || token !== quickActionTransaction) return;
     closeQuickActionMenu();
+    const presetSelect = $('#settings_preset_openai');
+    const hasPreset = name => presetSelect.find('option').toArray().some(option => normalizeText(option.textContent) === name);
+    const profile = action.profileId ? profiles().find(item => item.id === action.profileId) : null;
+    const bound = action.preset ? profiles().find(item => item.id === settings().presetBindings[action.preset]) : null;
+    if ((action.preset && !hasPreset(action.preset)) || (action.profileId && !profile)
+        || [profile, bound].some(item => item && !isFormatSupported(item.format))
+        || (action.model && platform.isModelAction(action.model))) {
+        toastr.error('快捷方案引用的预设、API 配置或模型已不可用。');
+        return;
+    }
+    const preset = currentPresetName();
+    if (action.preset && preset !== action.preset && !hasPreset(preset)) {
+        toastr.error('当前预设无法恢复，请先选择一个有效预设再切换。');
+        return;
+    }
     beginPresetTransition();
     quickActionBlockingToken = token;
+    const presetWasDisabled = Boolean(presetSelect.prop('disabled'));
+    presetSelect.prop('disabled', true);
+    let snapshot = null;
+    let attempted = false;
     try {
+        const state = await readAuthoritativeSecretState();
+        if (!state) throw new Error('无法验证当前密钥状态。');
+        if (teardownPending || token !== quickActionTransaction) return;
+        snapshot = {
+            preset, presetValue: presetSelect.val(), native: snapshotNative(),
+            postProcessing: oai_settings.custom_prompt_post_processing, proxyPreset: $('#openai_proxy_preset').val(),
+            selectedId: settings().selectedProfileId, activeId: settings().activeProfileId,
+            blocked: { ...settings().blockedSecretKeys },
+            credentials: new Map(Object.values(FORMATS).map(({ secretKey }) => [secretKey, getActiveSecret(secretKey)?.id || ''])),
+        };
+        attempted = true;
         if (action.preset && !await selectPresetForQuickAction(action.preset, token)) {
-            if (token === quickActionTransaction) toastr.error('便捷方案的 preset 不存在或切换未完成。');
-            return;
+            throw new Error('预设切换未完成。');
         }
-        if (token !== quickActionTransaction) return;
-        let profile = null;
+        if (token !== quickActionTransaction || teardownPending) throw new Error('快捷切换已取消。');
         if (action.profileId) {
-            profile = profiles().find(item => item.id === action.profileId) || null;
             const applyModel = !action.preset && !action.model;
-            if (!profile || !await applyProfileById(action.profileId, token, { applyModel, manageTransition: false })) {
-                if (token === quickActionTransaction) toastr.error('便捷方案的 Profile 未能安全应用。');
-                return;
+            if (!await applyProfileById(action.profileId, token, { applyModel, manageTransition: false })) {
+                throw new Error('API 配置未能安全应用。');
             }
+        } else if (bound && (settings().activeProfileId !== bound.id || !profileMatchesNative(bound, { includeModel: false }))) {
+            throw new Error('预设绑定的 API 配置未能安全应用。');
         }
-        if (token !== quickActionTransaction) return;
+        if (token !== quickActionTransaction || teardownPending) throw new Error('快捷切换已取消。');
         if (action.model && !applyExplicitModel(action.model, profile?.format || '')) {
-            toastr.error('便捷方案模型写入验证失败。');
-            return;
+            throw new Error('模型写入验证失败。');
         }
-        if (token !== quickActionTransaction) return;
+        attempted = false;
         renderProfiles(settings().selectedProfileId);
-        const format = findFormatForCurrentSource();
-        const active = profiles().find(item => item.id === settings().activeProfileId);
-        const activeProfile = active && profileMatchesNative(active, { includeModel: false }) ? active : null;
-        const connection = format && normalizeQuickConnection({
-            preset: currentPresetName(), profileId: activeProfile?.id || '', format,
-            model: normalizeText(oai_settings[FORMATS[format].modelField]),
-        });
+        const { connection, profile: activeProfile } = readQuickConnection(action.id);
+        lastAppliedQuickAction = connection;
         if (action.model && connection) renderQuickConnectionModel(connection, activeProfile);
         if (settings().restoreQuickActionOnStartup && connection) {
             settings().lastQuickConnection = connection;
@@ -3400,7 +3508,21 @@ async function runQuickAction(action, token) {
             forgetQuickConnection();
         }
         toastr.success(`已应用${quickActionDisplayName(action)}。`);
+    } catch (error) {
+        if (!attempted) {
+            toastr.error(error.message);
+        } else {
+            let restored = false;
+            try {
+                restored = await rollbackQuickAction(snapshot, token);
+            } catch {
+                const format = findFormatForCurrentSource();
+                if (format) setCredentialSafetyBlock(FORMATS[format].secretKey, '快捷切换回滚未完成，请重新应用 API 配置。');
+            }
+            toastr.error(`${error.message}${restored ? '已恢复上一条连接。' : '未能完整恢复，请重新应用 API 配置。'}`);
+        }
     } finally {
+        presetSelect.prop('disabled', presetWasDisabled);
         if (quickActionBlockingToken === token) {
             quickActionBlockingToken = 0;
             endPresetTransition();
@@ -3527,13 +3649,22 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
         $('<div class="qr--button-icon fa-solid qr--hidden">'),
         $('<div class="qr--button-label">').text('暂无方案'),
     ));
+    const { connection, profile } = readQuickConnection();
+    const currentId = currentQuickActionId(connection, profile);
     actions.forEach((action, index) => {
         const name = quickActionDisplayName(action, index);
+        const current = action.id === currentId;
+        const actionProfile = profiles().find(item => item.id === action.profileId);
+        const summary = current ? [profile?.name || FORMATS[connection.format].label, connection.model]
+            : [actionProfile?.name || action.preset, action.model || actionProfile?.model];
+        const label = $('<div class="qr--button-label tavern-api__quick-menu-label">').append($('<span>').text(name));
+        if (summary.some(Boolean)) label.append($('<small>').text(summary.filter(Boolean).join(' · ')));
         menu.append($('<li class="list-group-item ctx-item" role="menuitem" tabindex="0" data-tavern-api-actionable="true">')
             .attr({ title: name, 'data-tavern-api-quick-action': action.id })
+            .attr('aria-current', current ? 'true' : null)
             .append(
-                $('<div class="qr--button-icon fa-solid qr--hidden">'),
-                $('<div class="qr--button-label">').text(name),
+                $('<div class="qr--button-icon fa-solid" aria-hidden="true">').addClass(current ? 'fa-check' : 'qr--hidden'),
+                label,
             )
             .on('click', () => { closeQuickActionMenu(); void queueQuickAction(action); }));
     });
@@ -3718,7 +3849,7 @@ function scheduleQuickActionEntries() {
 }
 
 function handleNativePresetChangeBefore({ presetName } = {}) {
-    if (extensionDisabled) return;
+    if (extensionDisabled || restoringQuickPreset) return;
     platform.rememberParameterEditors();
     const generation = ++profileSelectionGeneration;
     clearTimeout(presetChangeTimer);
@@ -3738,7 +3869,7 @@ function handleNativePresetChangeBefore({ presetName } = {}) {
 }
 
 async function handleNativePresetChange() {
-    if (extensionDisabled) return false;
+    if (extensionDisabled || restoringQuickPreset) return false;
     syncNativePostProcessing();
     platform.syncParameterEditors();
     beginPresetTransition();
@@ -4193,6 +4324,7 @@ async function restoreQuickConnection(currentPreset) {
         settings().activeProfileId = profile?.id || null;
         renderProfiles();
         renderQuickConnectionModel(connection, profile);
+        lastAppliedQuickAction = connection;
         scheduleSettingsSave();
         return true;
     } finally {

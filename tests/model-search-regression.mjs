@@ -46,6 +46,14 @@ export async function runModelSearchRegressions({ page, state, log, setViewport,
     assert.equal(none.count, '显示 0 / 6 个模型');
     assert.match(none.empty, /没有匹配/);
     assert.deepEqual(names(await search('   ')), initialRemote);
+    await search('gpt');
+    await run(`$('.tavern-api__model-search-meta input').prop('checked', true).trigger('change')`);
+    assert.deepEqual(names(await run('searchRead()')), ['gpt-4.1-mini']);
+    assert.deepEqual(names(await action('all')), []);
+    assert.ok((await run('searchRead()')).chosen.includes('GPT-4o'));
+    await run(`$('.tavern-api__model-search-meta input').prop('checked', false).trigger('change')`);
+    await action('none');
+    await search('');
     log('remote model search is immediate, case-insensitive, literal, trimmed and supports non-contiguous subsequences with counts/empty feedback');
 
     const enter = await run(`(() => {

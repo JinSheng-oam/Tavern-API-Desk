@@ -386,6 +386,38 @@ try {
     state.settings = quickRestartBaseline;
     log('opt-in quick switching survives reload without rewriting preset or profile defaults; manual edits and disabling clear it');
 
+    const transactionPage = await newPage();
+    const transaction = transactionPage.evaluate;
+    await transaction(`enqueueOperation(restoreInitialProfileSelection)`);
+    await transaction(`queueQuickAction({ ...settings().quickActions[0], model:'model-a' })`);
+    const highlighted = () => transaction(`(() => {
+        openQuickActionMenu(document.getElementById('extensionsMenuButton'), 'leftSendForm', { focusFirst:false });
+        const current = document.querySelector('.tavern-api__quick-menu [aria-current="true"]');
+        const result = current ? [current.dataset.tavernApiQuickAction, current.querySelector('small').textContent] : null;
+        closeQuickActionMenu();
+        return result;
+    })()`);
+    assert.deepEqual(await highlighted(), ['qa-0', profile.name + ' · model-a']);
+    await transaction(`$('#custom_model_id').val('manual').trigger('input'); renderProfiles()`);
+    assert.equal(await highlighted(), null);
+    const previous = await transaction(`[currentPresetName(), oai_settings.custom_url, getEditorModel(), settings().activeProfileId]`);
+    const previousSecrets = state.secrets;
+    state.secrets = { ...state.secrets, api_key_custom: [{ id:'test-secret', active:true }, { id:'rollback-target', active:false }] };
+    await transaction(`$('#settings_preset_openai').on('change', function () {
+        void switchTestPreset(this.selectedOptions[0].textContent);
+    });
+    profiles().push(normalizeProfile({ ...profiles()[0], id:'rollback-target', secretId:'rollback-target', endpoint:'https://rollback.invalid/v1' }));
+    $('#custom_model_id').on('input', function () { if (this.value === 'reject-model') this.value = 'rejected'; });
+    queueQuickAction({ preset:'B', profileId:'rollback-target', model:'reject-model' })`);
+    assert.deepEqual(await transaction(`[currentPresetName(), oai_settings.custom_url, getEditorModel(), settings().activeProfileId]`), previous);
+    assert.equal(state.secrets.api_key_custom.find(entry => entry.active)?.id, 'test-secret');
+    assert.ok(await transaction(`messages.some(item => item.message.includes('已恢复上一条连接')) && !presetTransitionBlocked`));
+    await transaction('persistSettingsNow()');
+    await transaction('teardownTavernApiDesk()');
+    state.settings = quickRestartBaseline;
+    state.secrets = previousSecrets;
+    log('quick menu checks actual connection and model; a failed final model restores the prior preset and connection');
+
     await run('persistSettingsNow()');
     const sharedSnapshot = await run('JSON.stringify(settings())');
     const foldRequestCount = state.requests.filter(request => request.path === savePath).length;
