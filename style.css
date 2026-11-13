@@ -1240,6 +1240,11 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
     font-size: 0.96em;
 }
 
+.tavern-api__quick-list-toolbar > strong,
+.tavern-api__quick-editor-title > .tavern-api__quick-back-to-list {
+    display: none;
+}
+
 .tavern-api__quick-editor-fields {
     display: flex;
     min-width: 0;
@@ -1500,62 +1505,97 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
     }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px), (pointer: coarse) {
     dialog.popup:has(.tavern-api__quick-manager) {
         width: min(96dvw, 42rem);
+        height: min(calc(100dvh - 1rem), 46rem) !important;
+        padding: 0.55rem max(0.55rem, env(safe-area-inset-right)) max(0.55rem, env(safe-area-inset-bottom)) max(0.55rem, env(safe-area-inset-left));
     }
 
-    .tavern-api__quick-manager {
-        overflow-x: hidden;
+    .tavern-api__quick-header {
+        gap: 0.4rem;
     }
 
-    .tavern-api__quick-header-actions {
-        width: 100%;
+    .tavern-api__quick-header-actions > :first-child > span,
+    .tavern-api__quick-header-actions > .tavern-api__save-button > i {
+        display: none;
     }
 
-    .tavern-api__quick-header-actions > :first-child {
-        margin-right: auto;
+    .tavern-api__quick-manager .menu_button,
+    .tavern-api__quick-manager .text_pole {
+        min-height: 44px;
+    }
+
+    .tavern-api__quick-manager .menu_button {
+        min-width: 44px;
+        touch-action: manipulation;
+    }
+
+    .tavern-api__quick-manager .text_pole {
+        font-size: max(16px, 1em);
     }
 
     .tavern-api__quick-columns {
-        display: flex;
-        flex-direction: column;
-        overflow-x: hidden;
-        overflow-y: auto;
-        overscroll-behavior: contain;
+        grid-template-columns: minmax(0, 1fr);
     }
 
-    .tavern-api__quick-list {
-        height: clamp(7rem, 24dvh, 16rem);
-        flex: 0 0 auto;
+    .tavern-api__quick-manager[data-view="list"] .tavern-api__quick-editor,
+    .tavern-api__quick-manager[data-view="editor"] .tavern-api__quick-list {
+        display: none;
     }
 
+    .tavern-api__quick-list,
     .tavern-api__quick-editor {
-        height: auto;
-        flex: 0 0 auto;
-        overflow: visible;
+        box-sizing: border-box;
+        padding: 0.5rem;
     }
 
-    .tavern-api__quick-editor-fields {
+    .tavern-api__quick-list-toolbar {
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .tavern-api__quick-list-toolbar > strong {
+        display: block;
+    }
+
+    .tavern-api__quick-list-toolbar .menu_button {
+        width: auto;
+    }
+
+    .tavern-api__quick-item {
         flex: 0 0 auto;
-        overflow: visible;
+        gap: 0.35rem;
+        padding-inline: 0.35rem;
+    }
+
+    .tavern-api__quick-item > .tavern-api__drag-handle {
+        min-height: 44px;
+    }
+
+    .tavern-api__quick-editor-title > .tavern-api__quick-back-to-list {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        margin: 0;
+    }
+
+    .tavern-api__quick-detail-title {
+        margin-inline-end: auto;
     }
 
     .tavern-api__quick-editor-actions {
-        position: sticky;
-        bottom: 0;
-        padding-bottom: 0.25rem;
-        background: var(--SmartThemeBlurTintColor);
+        flex-wrap: nowrap;
     }
 
-    .tavern-api__quick-field {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 0.25rem;
+    .tavern-api__quick-editor-actions > .tavern-api__save-button {
+        flex: 1 1 auto;
     }
 
-    .tavern-api__quick-model-control > .text_pole,
     .tavern-api__quick-model-control > .menu_button {
-        flex: 1 1 100%;
+        margin: 0;
     }
 }
 

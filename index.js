@@ -2911,18 +2911,20 @@ async function manageQuickActions() {
     let detailBaseline = detailDraft ? JSON.stringify(detailDraft) : '';
     let detailCandidates = detailDraft ? modelSuggestionsForProfile(detailDraft.profileId) : [];
 
-    const content = $('<div class="tavern-api__quick-manager">');
+    const content = $('<div class="tavern-api__quick-manager" data-view="list">');
     const header = $('<header class="tavern-api__quick-header">');
-    const title = $('<div class="tavern-api__quick-title"><i class="fa-solid fa-bolt"></i><span>便捷按钮管理</span></div>');
+    const title = $('<div class="tavern-api__quick-title"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>快捷方案</span></div>');
     const placementButton = $('<button type="button" class="menu_button" title="入口位置" aria-label="设置便捷入口位置"><i class="fa-solid fa-gear"></i><span>位置设置</span></button>');
-    const saveAll = $('<button type="button" class="menu_button tavern-api__save-button" title="保存全部方案到 SillyTavern" aria-label="保存全部方案到 SillyTavern"><i class="fa-solid fa-floppy-disk"></i><span>保存</span></button>');
+    const saveAll = $('<button type="button" class="menu_button tavern-api__save-button"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span>保存全部</span></button>');
     const close = $('<button type="button" class="menu_button" title="关闭并丢弃更改" aria-label="关闭并丢弃更改"><i class="fa-solid fa-xmark"></i></button>');
     header.append(title, $('<div class="tavern-api__quick-header-actions">').append(placementButton, saveAll, close));
-    const add = $('<button class="menu_button" type="button"><i class="fa-solid fa-plus"></i><span>新增方案</span></button>');
+    const add = $('<button class="menu_button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>新增方案</span></button>');
+    const listTitle = $('<strong>').text('方案列表');
     const list = $('<div class="tavern-api__quick-list">');
     const listItems = $('<div class="tavern-api__quick-list-items" role="listbox" aria-label="便捷方案">');
-    list.append($('<div class="tavern-api__quick-list-toolbar">').append(add), listItems);
+    list.append($('<div class="tavern-api__quick-list-toolbar">').append(listTitle, add), listItems);
     const editor = $('<div class="tavern-api__quick-editor">');
+    const back = $('<button type="button" class="menu_button tavern-api__quick-back-to-list"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>返回列表</span></button>');
     content.append(header, $('<div class="tavern-api__quick-columns">').append(list, editor));
 
     let managerSaving = false;
@@ -2931,6 +2933,17 @@ async function manageQuickActions() {
     });
     let managerOpen = true;
     ownedPopups.add(popup);
+    const showView = view => {
+        content.attr('data-view', view);
+        if (!isMobileDeskViewport()) return;
+        const target = view === 'editor' ? back[0] : listItems.find('.is-selected')[0] || add[0];
+        target.focus();
+    };
+    back.on('click', () => showView('list'));
+    const editAction = id => {
+        selectAction(id);
+        showView('editor');
+    };
     const selectAction = (id, force = false) => {
         if (!force && id === selectedId) return;
         if (!force && id !== selectedId && detailDraft && JSON.stringify(detailDraft) !== detailBaseline) {
@@ -2999,15 +3012,15 @@ async function manageQuickActions() {
                 .append($(`<i class="fa-solid ${icon}"></i>`)).on('click', event => { event.stopPropagation(); handler(); });
             const copy = makeRowButton('复制', 'fa-clone', false, () => {
                 const clone = normalizeQuickAction({ ...structuredClone(previewSource), id: makeId('quick-action'), name: `${displayName} 副本` }, index + 1);
-                globalDraft.splice(index + 1, 0, clone); selectAction(clone.id);
+                globalDraft.splice(index + 1, 0, clone); editAction(clone.id);
             });
             const remove = makeRowButton('删除', 'fa-trash', false, () => {
                 globalDraft.splice(index, 1);
                 selectAction(globalDraft[Math.min(index, globalDraft.length - 1)]?.id || '', true);
             }, true);
             const actionsWrap = $('<div class="tavern-api__quick-item-actions">').append(copy, remove);
-            row.append(handle, main, actionsWrap).on('click', () => selectAction(action.id)).on('keydown', event => {
-                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectAction(action.id); }
+            row.append(handle, main, actionsWrap).on('click', () => editAction(action.id)).on('keydown', event => {
+                if (event.target === row[0] && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); editAction(action.id); }
             });
             listItems.append(row);
         });
@@ -3025,6 +3038,7 @@ async function manageQuickActions() {
         renderListItems();
     };
     const renderEditor = () => {
+        back.detach();
         editor.empty().removeClass('has-unsaved-detail');
         if (!detailDraft) {
             editor.append($('<div class="tavern-api__empty-state">').text('新增方案后，可自由组合 preset、Profile 与 model。'));
@@ -3033,7 +3047,7 @@ async function manageQuickActions() {
         const name = $('<input class="text_pole" type="text" maxlength="120" placeholder="留空自动命名为方案N">').val(detailDraft.name);
         const preset = $(`<select class="text_pole">${presetOptionsHtml(detailDraft.preset)}</select>`);
         const profileSelect = $(`<select class="text_pole">${profileOptionsHtml(detailDraft.profileId)}</select>`);
-        const modelInput = $('<input class="text_pole" type="text" maxlength="500" placeholder="可直接输入自定义模型 ID">').val(detailDraft.model);
+        const modelInput = $('<input class="text_pole" type="text" maxlength="500" aria-label="自定义模型 ID" placeholder="输入模型 ID">').val(detailDraft.model);
         const modelSelect = $('<select class="text_pole" aria-label="从配置模型列表选择"></select>');
         const refreshModels = () => {
             const models = normalizeModelList([...modelSuggestionsForProfile(detailDraft.profileId), ...detailCandidates, detailDraft.model]);
@@ -3107,11 +3121,13 @@ async function manageQuickActions() {
             detailDraft = structuredClone(globalDraft[index]);
             detailBaseline = JSON.stringify(detailDraft);
             render();
-            toastr.success('方案修改已保存；点击顶部“保存”后写入设置。');
+            if (isMobileDeskViewport()) showView('list');
+            toastr.success('方案修改已确认，点击“保存全部”写入设置。');
         });
         cancelScheme.on('click', () => selectAction(selectedId, true));
-        const editorHeader = $('<h4 class="tavern-api__quick-editor-title">').append(
-            $('<span>').text('方案详情'),
+        const editorHeader = $('<div class="tavern-api__quick-editor-title">').append(
+            back,
+            $('<strong class="tavern-api__quick-detail-title">').text('方案详情'),
             $('<span class="tavern-api__quick-dirty-badge" hidden>').text('未确认修改'),
         );
         editor.append(
@@ -3131,7 +3147,7 @@ async function manageQuickActions() {
     add.on('click', () => {
         const action = normalizeQuickAction({ id: makeId('quick-action'), sequence: globalDraft.length });
         globalDraft.push(action);
-        selectAction(action.id);
+        editAction(action.id);
     });
     placementButton.on('click', () => void chooseQuickActionPlacement(draftPlacement, value => {
         draftPlacement = value;
@@ -3142,7 +3158,10 @@ async function manageQuickActions() {
     }));
     close.on('click', () => void popup.completeCancelled());
     saveAll.on('click', async () => {
-        if (detailDraft && JSON.stringify(detailDraft) !== detailBaseline) return toastr.warning('当前方案还有未确认的修改，请先点击“保存方案”或“取消”。');
+        if (detailDraft && JSON.stringify(detailDraft) !== detailBaseline) {
+            showView('editor');
+            return toastr.warning('当前方案还有未确认的修改，请先点击“保存方案”或“重置修改”。');
+        }
         const invalid = globalDraft.find(action => !action.preset && !action.profileId && !action.model);
         if (invalid) return toastr.warning('请先点击“保存方案”确认每个方案；每项至少需要 preset、Profile 或 model。');
         const validProfileIds = new Set(profiles().map(profile => profile.id));

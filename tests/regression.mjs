@@ -422,22 +422,36 @@ try {
     log('blocked localStorage and missing idle callbacks keep folding usable without server fallback');
 
     await run('togglePanel(); void manageQuickActions()');
-    for (const [width, height] of [[320, 568], [375, 667], [768, 500], [1024, 340], [320, 300]]) {
+    for (const [width, height] of [[320, 568], [375, 667], [768, 500], [1024, 340], [844, 390], [320, 300]]) {
         await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true }, page.sessionId);
+        await cdp('Emulation.setTouchEmulationEnabled', { enabled: width === 844 }, page.sessionId);
         await run('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+        if (width <= 767 || width === 844) {
+            assert.deepEqual(await run(`[$('.tavern-api__quick-list').is(':visible'), $('.tavern-api__quick-editor').is(':visible')]`), [true, false]);
+            await run(`document.querySelector('.tavern-api__quick-item').click()`);
+            assert.deepEqual(await run(`[$('.tavern-api__quick-list').is(':visible'), $('.tavern-api__quick-editor').is(':visible'),
+                document.activeElement.matches('.tavern-api__quick-back-to-list')]`), [false, true, true]);
+        }
         const layout = await run(`(() => {
             const dialog = document.querySelector('dialog[open]');
             const save = dialog.querySelector('.tavern-api__quick-header-actions .tavern-api__save-button');
             const rect = save.getBoundingClientRect();
-            const columns = dialog.querySelector('.tavern-api__quick-columns'); columns.scrollTop = columns.scrollHeight;
+            const fields = dialog.querySelector('.tavern-api__quick-editor-fields'); fields.scrollTop = fields.scrollHeight;
             const detail = dialog.querySelector('.tavern-api__quick-editor-actions .tavern-api__save-button');
             const dr = detail.getBoundingClientRect();
-            return {width:innerWidth,height:innerHeight,rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom},detail:{left:dr.left,right:dr.right,top:dr.top,bottom:dr.bottom},hit:save.contains(document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2)),overflows:dialog.scrollWidth>dialog.clientWidth+2};
+            const hits = (button, box) => button.contains(document.elementFromPoint(box.left+box.width/2,box.top+box.height/2));
+            return {width:innerWidth,height:innerHeight,rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom},detail:{left:dr.left,right:dr.right,top:dr.top,bottom:dr.bottom},hit:hits(save, rect),detailHit:hits(detail, dr),overflows:dialog.scrollWidth>dialog.clientWidth+2};
         })()`);
         assert.ok(layout.rect.left >= 0 && layout.rect.right <= width && layout.rect.top >= 0 && layout.rect.bottom <= height, JSON.stringify({ width, height, layout }));
         assert.ok(layout.hit, `Header save is clipped at ${width}x${height}`);
         assert.ok(!layout.overflows, `Horizontal overflow at ${width}x${height}`);
-        assert.ok(layout.detail.top >= 0 && layout.detail.bottom <= height, `Detail save is unreachable: ${JSON.stringify(layout)}`);
+        assert.ok(layout.detailHit && layout.detail.top >= 0 && layout.detail.bottom <= height, `Detail save is unreachable: ${JSON.stringify(layout)}`);
+        if (width === 375 && process.env.API_DESK_CAPTURE_DIR) {
+            await mkdir(process.env.API_DESK_CAPTURE_DIR, { recursive: true });
+            await run(`document.querySelector('.tavern-api__quick-editor-fields').scrollTop = 0`);
+            const screenshot = await cdp('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+            await writeFile(path.join(process.env.API_DESK_CAPTURE_DIR, 'quick-editor-mobile.png'), Buffer.from(screenshot.data, 'base64'));
+        }
         const modelLayout = await run(`(() => {
             const rect = selector => document.querySelector(selector).getBoundingClientRect();
             const title = rect('.tavern-api__model-field > label');
@@ -453,6 +467,10 @@ try {
         if (width <= 760) assert.ok(modelLayout.header, JSON.stringify({width, modelLayout}));
         log(`model actions stay horizontal and mobile title actions align at ${width}x${height}`);
         log(`save buttons remain accessible at ${width}x${height}, including long names`);
+        if ((width <= 767 || width === 844) && height !== 300) {
+            await run(`document.querySelector('.tavern-api__quick-back-to-list').click()`);
+            assert.equal(await run(`document.activeElement.matches('.tavern-api__quick-item.is-selected')`), true);
+        }
     }
     await run(`document.querySelector('dialog[open] .tavern-api__quick-field input').value='Unsaved'; $('dialog[open] .tavern-api__quick-field input').first().trigger('input'); $('dialog[open] .tavern-api__quick-header-actions .tavern-api__save-button').trigger('click')`);
     assert.ok(await run(`messages.some(item => item.message.includes('当前方案还有未确认'))`));
