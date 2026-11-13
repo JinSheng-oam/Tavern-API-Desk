@@ -120,10 +120,12 @@
 .tavern-api__quick-url-menu {
     position: fixed;
     z-index: 10020;
+    box-sizing: border-box;
     display: flex;
     max-height: min(70dvh, 34rem);
     overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior: contain;
     flex-direction: column;
     gap: 0.2rem;
     padding: 0.45rem;
@@ -1963,6 +1965,9 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
     justify-content: center;
     width: 1.5rem;
     height: 1.5rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
     cursor: pointer;
     opacity: 0.65;
     transition: opacity 0.15s, transform 0.15s;
@@ -2030,6 +2035,12 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
     border-radius: 4px;
     white-space: nowrap;
     transition: background 0.12s ease;
+    flex: 0 0 auto;
+    width: 100%;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    text-align: left;
 }
 
 .tavern-api__combobox-name {
@@ -2096,4 +2107,65 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
         min-width: 100%;
         max-width: 100%;
     }
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+    .tavern-api :is(input.text_pole, .desk-search input) {
+        font-size: 16px;
+    }
+
+    .tavern-api :is(.desk-icon, .desk-primary, #tavern_api_apply, #tavern_api_model_control > .menu_button),
+    .tavern-api .tavern-api__key-actions .desk-icon {
+        min-height: 44px;
+    }
+
+    .tavern-api .desk-icon {
+        min-width: 44px;
+    }
+
+    .tavern-api #tavern_api_quick_url {
+        flex-basis: 44px;
+    }
+
+    .tavern-api__quick-url-menu :is(.tavern-api__quick-url-select, .tavern-api__quick-url-delete, .tavern-api__quick-url-add) {
+        min-height: 44px;
+        touch-action: manipulation;
+    }
+
+    .tavern-api__quick-url-select {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.15rem;
+    }
+
+    .tavern-api #tavern_api_model_control > .tavern-api__combobox {
+        display: block;
+        flex-basis: 100%;
+    }
+
+    .tavern-api .tavern-api__combobox-input {
+        min-height: 44px;
+        padding-right: 48px !important;
+    }
+
+    .tavern-api__combobox-toggle {
+        top: 0;
+        right: 0;
+        transform: none;
+        width: 44px;
+        height: 44px;
+        touch-action: manipulation;
+    }
+
+    .tavern-api__combobox-dropdown {
+        position: static;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        max-height: min(38dvh, 280px);
+        margin-top: 4px;
+    }
+
+    .tavern-api__combobox-header { white-space: normal; }
+    .tavern-api__combobox-list { min-height: 0; }
+    .tavern-api__combobox-item { min-height: 44px; }
 }

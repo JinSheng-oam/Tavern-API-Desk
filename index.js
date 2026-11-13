@@ -787,14 +787,15 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
         dropdown.append(header);
 
         const list = $('<div class="tavern-api__combobox-list">');
+        const pick = model => {
+            chooseModel(model);
+            toggle[0].focus({ preventScroll: true });
+        };
 
         if (isSearchMode && !allModels.includes(query)) {
-            const customOption = $('<div class="tavern-api__combobox-item tavern-api__combobox-item--custom" role="option">')
-                .append($('<i class="fa-solid fa-plus"></i>'), $('<span>').text(` 使用自定义模型：${query}`));
-            customOption.on('mousedown pointerdown', event => {
-                event.preventDefault();
-                chooseModel(query);
-            });
+            const customOption = $('<button type="button" class="tavern-api__combobox-item tavern-api__combobox-item--custom">')
+                .append($('<i class="fa-solid fa-plus" aria-hidden="true"></i>'), $('<span class="tavern-api__combobox-name">').text(`使用自定义模型：${query}`));
+            customOption.on('mousedown', event => event.preventDefault()).on('click', () => pick(query));
             list.append(customOption);
         }
 
@@ -803,7 +804,7 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
         } else {
             filtered.forEach((model, idx) => {
                 const isCurrent = model === selectedVal;
-                const item = $('<div class="tavern-api__combobox-item" role="option">')
+                const item = $('<button type="button" class="tavern-api__combobox-item">')
                     .attr('data-model', model)
                     .attr('data-index', idx)
                     .toggleClass('is-selected', isCurrent)
@@ -812,10 +813,7 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
                 if (isCurrent) {
                     item.append($('<i class="fa-solid fa-check tavern-api__combobox-check" title="当前使用的模型"></i>'));
                 }
-                item.on('mousedown pointerdown', event => {
-                    event.preventDefault();
-                    chooseModel(model);
-                });
+                item.on('mousedown', event => event.preventDefault()).on('click', () => pick(model));
                 list.append(item);
             });
         }
@@ -827,14 +825,12 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
         isOpen = true;
         activeIndex = -1;
         dropdown.prop('hidden', false);
+        toggle.attr('aria-expanded', 'true');
         toggle.find('i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
         renderDropdown();
-        setTimeout(() => {
-            const selectedItem = dropdown.find('.tavern-api__combobox-item.is-selected');
-            if (selectedItem.length && selectedItem[0]) {
-                selectedItem[0].scrollIntoView({ block: 'nearest' });
-            }
-        }, 30);
+        const list = dropdown.find('.tavern-api__combobox-list')[0];
+        const selected = list.querySelector('.is-selected');
+        if (selected) list.scrollTop = selected.getBoundingClientRect().top - list.getBoundingClientRect().top;
     };
 
     const closeDropdown = () => {
@@ -843,6 +839,7 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
         activeIndex = -1;
         isActivelyFiltering = false;
         dropdown.prop('hidden', true);
+        toggle.attr('aria-expanded', 'false');
         toggle.find('i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
     };
 
@@ -860,7 +857,7 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
     input.on('focus', () => {
         isActivelyFiltering = false;
         openDropdown();
-        setTimeout(() => input.trigger('select'), 20);
+        input[0].select();
     }).on('input', () => {
         isActivelyFiltering = true;
         openDropdown();
@@ -905,35 +902,45 @@ function bindModelCombobox(combobox, input, toggle, dropdown, select, allModels)
             }
         } else if (event.key === 'Escape') {
             event.preventDefault();
+            event.stopPropagation();
             input.val(select.val());
             closeDropdown();
         }
-    }).on('blur', () => {
-        setTimeout(() => {
-            closeDropdown();
-            const typed = normalizeText(input.val());
-            const currentSelected = normalizeText(select.val());
-            if (!typed) {
-                input.val(currentSelected);
-            } else if (typed !== currentSelected && isActivelyFiltering) {
-                chooseModel(typed);
-            }
-        }, 220);
+    });
+    combobox.on('focusout', event => {
+        if (combobox[0].contains(event.relatedTarget)) return;
+        const typed = normalizeText(input.val());
+        if (isActivelyFiltering && typed && typed !== normalizeText(select.val())) {
+            chooseModel(typed);
+            return;
+        }
+        closeDropdown();
+        if (!typed) input.val(select.val());
     });
 
-    toggle.on('pointerdown mousedown', event => {
-        event.preventDefault();
+    toggle.on('click', event => {
         event.stopPropagation();
-        if (isOpen) {
+        toggle[0].focus({ preventScroll: true });
+        if (isOpen) closeDropdown();
+        else openDropdown();
+    });
+    toggle.on('keydown', event => {
+        if (event.key === 'Escape' && isOpen) {
+            event.preventDefault();
+            event.stopPropagation();
             closeDropdown();
-        } else {
-            input.trigger('focus');
+        } else if (isOpen && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+            event.preventDefault();
+            const options = dropdown.find('.tavern-api__combobox-item');
+            (event.key === 'ArrowDown' ? options.first() : options.last())[0]?.focus();
         }
     });
-
-    $(document).on('pointerdown.tavernApiDesk', event => {
-        if (!combobox[0].contains(event.target)) {
+    dropdown.on('keydown', '.tavern-api__combobox-item', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
             closeDropdown();
+            toggle[0].focus({ preventScroll: true });
         }
     });
 }
@@ -944,7 +951,7 @@ function renderModelControl(profile = selectedProfile(), modelOverride = null) {
     const current = normalizeText(modelOverride ?? profile?.model ?? oai_settings[FORMATS[format].modelField]);
     const nativeModels = nativeProviderModels(format);
     const models = normalizeModelList([...(profile?.customized ? [] : nativeModels), ...(profile?.availableModels || []), current]);
-    const select = $('<select id="tavern_api_custom_model" class="tavern-api__hidden-select" aria-label="模型">')
+    const select = $('<select id="tavern_api_custom_model" class="tavern-api__hidden-select" tabindex="-1" aria-hidden="true">')
         .append($('<option>').val('').text('— 选择模型 —'));
     for (const model of models) select.append($('<option>').val(model).text(model));
     select.val(current);
@@ -952,8 +959,8 @@ function renderModelControl(profile = selectedProfile(), modelOverride = null) {
     const combobox = $('<div class="tavern-api__combobox flex1">');
     const input = $('<input type="text" id="tavern_api_model_search_input" class="text_pole tavern-api__combobox-input" autocomplete="off" spellcheck="false" placeholder="— 搜索或选择模型 —" aria-label="搜索或选择模型">')
         .val(current);
-    const toggle = $('<span class="tavern-api__combobox-toggle" role="button" tabindex="0" title="展开/收起模型列表" aria-label="展开/收起模型列表"><i class="fa-solid fa-chevron-down"></i></span>');
-    const dropdown = $('<div class="tavern-api__combobox-dropdown" hidden>');
+    const toggle = $('<button type="button" class="tavern-api__combobox-toggle" title="展开/收起模型列表" aria-label="展开/收起模型列表" aria-controls="tavern_api_model_dropdown" aria-expanded="false"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>');
+    const dropdown = $('<div id="tavern_api_model_dropdown" class="tavern-api__combobox-dropdown" hidden>');
 
     combobox.append(input, toggle, dropdown, select);
 
@@ -1545,29 +1552,40 @@ function closeQuickUrlMenu() {
     $(globalThis.visualViewport).off('.tavernApiDeskQuickUrl');
 }
 
+function isMobileDeskViewport() {
+    return globalThis.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches ?? (globalThis.innerWidth <= 767);
+}
+
 function positionQuickUrlMenu() {
     if (!quickUrlMenu?.length) return;
     const button = document.getElementById('tavern_api_quick_url');
     if (!button) return closeQuickUrlMenu();
     const rect = button.getBoundingClientRect();
-    const margin = 8;
-    const viewportWidth = globalThis.visualViewport?.width || window.innerWidth;
-    const viewportHeight = globalThis.visualViewport?.height || window.innerHeight;
-    const menuWidth = Math.min(Math.max(rect.width, 300), viewportWidth - margin * 2);
-    quickUrlMenu.css({ width: `${menuWidth}px`, left: '0px', top: '0px' });
-    const menuHeight = quickUrlMenu.outerHeight();
-    const left = Math.min(Math.max(margin, rect.right - menuWidth), viewportWidth - menuWidth - margin);
-    const fitsBelow = rect.bottom + menuHeight + margin <= viewportHeight;
-    const top = fitsBelow ? rect.bottom + 4 : Math.max(margin, rect.top - menuHeight - 4);
-    quickUrlMenu.css({ left: `${left}px`, top: `${top}px` });
+    const viewport = globalThis.visualViewport;
+    const minX = (viewport?.offsetLeft ?? 0) + 8;
+    const minY = (viewport?.offsetTop ?? 0) + 8;
+    const maxX = minX + (viewport?.width ?? window.innerWidth) - 16;
+    const maxY = minY + (viewport?.height ?? window.innerHeight) - 16;
+    if (maxX <= minX || maxY <= minY || rect.bottom <= minY || rect.top >= maxY) return closeQuickUrlMenu();
+    const row = button.parentElement.getBoundingClientRect();
+    const width = Math.min(isMobileDeskViewport() ? Math.max(300, row.width) : 300, maxX - minX);
+    const left = Math.max(minX, Math.min(rect.right - width, maxX - width));
+    const belowTop = Math.max(minY, rect.bottom + 4);
+    const aboveBottom = Math.min(maxY, rect.top - 4);
+    const below = Math.max(0, maxY - belowTop);
+    const above = Math.max(0, aboveBottom - minY);
+    if (Math.max(below, above) < 44) return closeQuickUrlMenu();
+    const preferredHeight = Math.min((maxY - minY) * 0.85, 544);
+    quickUrlMenu.css({ width, left, maxHeight: preferredHeight });
+    const opensBelow = below >= quickUrlMenu.outerHeight() || below >= above;
+    quickUrlMenu.css('max-height', Math.min(preferredHeight, opensBelow ? below : above));
+    quickUrlMenu.css('top', opensBelow ? belowTop : aboveBottom - quickUrlMenu.outerHeight());
 }
 
 function fillQuickUrl(url) {
-    const input = $('#tavern_api_url').val(url).trigger('input');
+    $('#tavern_api_url').val(url).trigger('input');
     closeQuickUrlMenu();
-    const mobilePointer = globalThis.matchMedia?.('(max-width: 760px) and (pointer: coarse)').matches;
-    if (mobilePointer) input.trigger('blur');
-    else input.trigger('focus');
+    document.getElementById('tavern_api_quick_url')?.focus({ preventScroll: true });
 }
 
 async function addCustomQuickUrl() {
@@ -1765,7 +1783,7 @@ function quickUrlItem(item, custom = false) {
 
 function openQuickUrlMenu() {
     closeQuickUrlMenu();
-    const menu = $('<div class="tavern-api__quick-url-menu" role="menu" aria-label="快捷 URL">');
+    const menu = $('<div id="tavern_api_quick_url_menu" class="tavern-api__quick-url-menu" role="menu" aria-label="常用 API 地址" tabindex="-1">');
     menu.append($('<div class="tavern-api__quick-url-heading">').text('SillyTavern 原生服务端点'));
     BUILTIN_QUICK_URLS.forEach(item => menu.append(quickUrlItem(item)));
     if (settings().quickUrls.length) {
@@ -1790,6 +1808,8 @@ function openQuickUrlMenu() {
     quickUrlMenu = menu.appendTo(quickUrlPortal);
     $('#tavern_api_quick_url').attr('aria-expanded', 'true');
     positionQuickUrlMenu();
+    if (!quickUrlMenu) return;
+    menu[0].focus({ preventScroll: true });
     $(document)
         .on('pointerdown.tavernApiDeskQuickUrl', event => {
             if (!$(event.target).closest('.tavern-api__quick-url-menu, #tavern_api_quick_url').length) closeQuickUrlMenu();
@@ -3339,10 +3359,6 @@ function closeQuickActionMenu() {
     $(globalThis.visualViewport).off('.tavernApiDeskMenu');
 }
 
-function isMobileQuickActionViewport() {
-    return globalThis.matchMedia?.('(max-width: 767px), (pointer: coarse)')?.matches ?? (globalThis.innerWidth <= 767);
-}
-
 function reopenExtensionsMenuIfClosed() {
     const panel = document.getElementById('extensionsMenu');
     if (panel && getComputedStyle(panel).display === 'none') {
@@ -3492,22 +3508,21 @@ function makeExtensionsMenuQuickActionEntry() {
             $('<i class="fa-solid fa-chevron-right tavern-api__submenu-chevron" aria-hidden="true">'),
         );
     entry.on('pointerenter.tavernApiDesk', event => {
-        if (!isMobileQuickActionViewport() && event.pointerType === 'mouse') openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false, focusFirst: false });
+        if (!isMobileDeskViewport() && event.pointerType === 'mouse') openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false, focusFirst: false });
     }).on('pointerdown.tavernApiDesk', event => {
-        if (!isMobileQuickActionViewport() && event.button === 0) openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
+        if (!isMobileDeskViewport() && event.button === 0) openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
     }).on('keydown.tavernApiDesk', event => {
         if (['Enter', ' ', 'ArrowRight'].includes(event.key)) {
             event.preventDefault();
             event.stopPropagation();
-            if (isMobileQuickActionViewport()) openInlineExtensionsQuickActionMenu(event.currentTarget);
+            if (isMobileDeskViewport()) openInlineExtensionsQuickActionMenu(event.currentTarget);
             else openQuickActionMenu(event.currentTarget, 'extensionsMenu', { toggle: false });
         }
     }).on('click.tavernApiDesk', event => {
-        if (isMobileQuickActionViewport()) {
-            event.preventDefault();
-            event.stopPropagation();
-            openInlineExtensionsQuickActionMenu(event.currentTarget);
-        }
+        if (!isMobileDeskViewport()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openInlineExtensionsQuickActionMenu(event.currentTarget);
     });
     return entry;
 }
@@ -3923,7 +3938,11 @@ function bindEvents() {
         native.value = option.value;
         $(native).trigger('change');
     });
-    $('#tavern_api_quick_url').on('click', toggleQuickUrlMenu);
+    $('#tavern_api_quick_url').on('click', event => {
+        event.stopPropagation();
+        document.getElementById('tavern_api_url')?.blur();
+        toggleQuickUrlMenu();
+    });
     $('#tavern_api_additional_parameters').on('click', () => $('#customize_additional_parameters').trigger('click'));
     $('#tavern_api_save').on('click', () => void enqueueOperation(saveSelectedProfile));
     $('#tavern_api_rename').on('click', async () => { if (await confirmDeskDiscard()) await renameSelectedProfile(); });
@@ -4257,7 +4276,8 @@ function toggleDeskWorkspace() {
     deskWorkspace.append(panel); document.body.append(deskWorkspace); deskWorkspace.showModal();
     panelCollapsed = false; renderPanelCollapseState();
     $('#tavern_api_expand').attr('aria-label', '收起工作台').attr('title', '收起工作台').find('i').attr('class', 'fa-solid fa-compress');
-    $('#tavern_api_search').trigger('focus');
+    const initialFocus = isMobileDeskViewport() ? 'tavern_api_expand' : 'tavern_api_search';
+    document.getElementById(initialFocus)?.focus({ preventScroll: true });
 }
 
 async function exportDeskBackup() {

@@ -238,6 +238,7 @@ try {
         return { sessionId, evaluate, reload };
     }
     const page = await newPage();
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false }, page.sessionId);
     const run = page.evaluate;
     assert.deepEqual(await run('[Boolean(document.getElementById("tavern_api_storage")), Boolean(document.getElementById("tavern_api_save"))]'), [false, true]);
     log('redundant storage button is removed while the API save button remains');
@@ -444,7 +445,7 @@ try {
             const add = rect('#tavern_api_add_model');
             return {
                 header: Math.abs(title.top + title.height/2 - fetch.top - fetch.height/2) < 2 && Math.abs(fetch.top-add.top) < 2 && fetch.left >= title.right && add.left >= fetch.right,
-                horizontal: [...document.querySelectorAll('#tavern_api_model_control button')].every(b => getComputedStyle(b).whiteSpace === 'nowrap' && b.scrollWidth <= b.clientWidth + 2),
+                horizontal: [...document.querySelectorAll('#tavern_api_model_control > .menu_button')].every(b => getComputedStyle(b).whiteSpace === 'nowrap' && b.scrollWidth <= b.clientWidth + 2),
                 contained: fetch.right <= innerWidth && add.right <= innerWidth,
             };
         })()`);
@@ -495,6 +496,56 @@ try {
     await runPostProcessingRegressions({ page: await newPage(), state, log });
     await runNativeImportRegressions({ page: await newPage(), state, log });
     await runParameterRegressions({ page: await newPage(), state, scopedHost, log });
+    const touchPage = await newPage();
+    const { sessionId, evaluate: touch } = touchPage;
+    await touch(`renderModelControl({ model: 'model-a', availableModels: ['model-a', 'model-b'] }, 'model-a')`);
+    await cdp('Emulation.setTouchEmulationEnabled', { enabled: true }, sessionId);
+    const tap = async selector => {
+        const point = await touch(`(() => {
+            const target = document.querySelector(${JSON.stringify(selector)});
+            const { left, top, width, height } = target.getBoundingClientRect();
+            return { x: left + width / 2, y: top + height / 2 };
+        })()`);
+        await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] }, sessionId);
+        await cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }, sessionId);
+    };
+    for (const [width, height] of [[320, 568], [844, 390]]) {
+        await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true }, sessionId);
+        await touch(`document.getElementById('tavern_api_quick_url').scrollIntoView({block:'center'});`);
+        await tap('#tavern_api_url');
+        assert.equal(await touch('document.activeElement.id'), 'tavern_api_url');
+        await tap('#tavern_api_quick_url');
+        assert.equal(await touch('document.activeElement.id'), 'tavern_api_quick_url_menu');
+        assert.ok(await touch(`(() => {
+            const menu = document.activeElement;
+            const {left, top, right, bottom} = menu.getBoundingClientRect();
+            const viewport = visualViewport;
+            return left >= viewport.offsetLeft && top >= viewport.offsetTop
+                && right <= viewport.offsetLeft + viewport.width && bottom <= viewport.offsetTop + viewport.height;
+        })()`));
+        const choice = '.tavern-api__quick-url-select';
+        const chosenUrl = await touch(`document.querySelector('${choice} small').textContent`);
+        await tap(choice);
+        assert.deepEqual(await touch(`[document.getElementById('tavern_api_url').value, document.activeElement.id,
+            document.getElementById('tavern_api_quick_url').getAttribute('aria-expanded')]`), [chosenUrl, 'tavern_api_quick_url', 'false']);
+        log(`touch can type or choose a URL without refocusing the input at ${width}x${height}`);
+
+        const modelToggle = '.tavern-api__combobox-toggle';
+        await touch(`document.querySelector('${modelToggle}').scrollIntoView({block:'center'})`);
+        await tap(modelToggle);
+        assert.deepEqual(await touch(`[document.activeElement.matches('${modelToggle}'), document.getElementById('tavern_api_model_dropdown').hidden]`), [true, false]);
+        const modelOption = '.tavern-api__combobox-item[data-model="model-b"]';
+        await touch(`document.querySelector('${modelOption}').scrollIntoView({block:'nearest'})`);
+        await tap(modelOption);
+        assert.deepEqual(await touch(`[document.getElementById('tavern_api_model_search_input').value,
+            document.activeElement.matches('${modelToggle}'), document.getElementById('tavern_api_model_dropdown').hidden]`), ['model-b', true, true]);
+        await tap('#tavern_api_model_search_input');
+        assert.equal(await touch('document.activeElement.id'), 'tavern_api_model_search_input');
+        log(`touch can browse and choose a model separately from typing at ${width}x${height}`);
+    }
+    await touch('toggleDeskWorkspace()');
+    assert.equal(await touch('document.activeElement.id'), 'tavern_api_expand');
+    log('opening the touch workspace leaves focus on its button');
     await runCompatibilityRegressions({ page: await newPage(), scopedHost, log });
     await runPresetRegressions({ page: await newPage(), state, log });
     const modelSearchPage = await newPage();

@@ -53,7 +53,7 @@ export function deskToolbar(formatOptions, keyHelp) {
                 <div class="tavern-api__field"><label for="tavern_api_name">配置名称</label><input id="tavern_api_name" class="text_pole" maxlength="160" placeholder="例如：日常聊天 / 备用线路" autocomplete="off"></div>
                 <div class="tavern-api__field"><label for="tavern_api_format">接口格式</label><select id="tavern_api_format" class="text_pole" aria-label="API 格式">${formatOptions}</select></div>
               </div>
-              <div class="tavern-api__field"><label for="tavern_api_url">API 地址</label><div class="tavern-api__row tavern-api__url-row"><input id="tavern_api_url" class="text_pole" type="url" autocomplete="off" placeholder="https://example.com/v1"><button id="tavern_api_quick_url" class="menu_button desk-icon" type="button" title="常用 API 地址" aria-label="常用 API 地址" aria-haspopup="menu" aria-expanded="false"><i class="fa-solid fa-link" aria-hidden="true"></i></button></div></div>
+              <div class="tavern-api__field"><label for="tavern_api_url">API 地址</label><div class="tavern-api__row tavern-api__url-row"><input id="tavern_api_url" class="text_pole" type="url" autocomplete="off" placeholder="https://example.com/v1"><button id="tavern_api_quick_url" class="menu_button desk-icon" type="button" title="常用 API 地址" aria-label="常用 API 地址" aria-haspopup="menu" aria-expanded="false" aria-controls="tavern_api_quick_url_menu"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></div></div>
               <div id="tavern_api_opencode_fields" class="tavern-api__field" style="display:none"><label for="tavern_api_opencode_format">OpenCode 协议</label><select id="tavern_api_opencode_format" class="text_pole"><option value="openai_compat">OpenAI Chat Completions</option><option value="openai_responses">OpenAI Responses</option><option value="claude_messages">Anthropic Messages</option><option value="gemini">Gemini（仅 Zen）</option></select></div>
             </div>
             <div class="desk-card desk-card--security">
@@ -63,7 +63,7 @@ export function deskToolbar(formatOptions, keyHelp) {
             </div>
             <div class="desk-card desk-card--model">
               <div class="desk-card-title"><i class="fa-solid fa-microchip" aria-hidden="true"></i> 模型与参数</div>
-              <div class="tavern-api__field tavern-api__model-field"><label for="tavern_api_custom_model">模型</label><div id="tavern_api_model_control" class="tavern-api__row"></div></div>
+              <div class="tavern-api__field tavern-api__model-field"><label for="tavern_api_model_search_input">模型</label><div id="tavern_api_model_control" class="tavern-api__row"></div></div>
               <div class="tavern-api__field"><label for="tavern_api_post_processing">提示词后处理</label><select id="tavern_api_post_processing" class="text_pole" aria-describedby="tavern_api_post_processing_note"></select><small id="tavern_api_post_processing_note" class="tavern-api__post-processing-note">即时应用于酒馆当前连接，可能随酒馆预设切换；“无工具”选项不支持工具调用。</small></div>
               <div class="tavern-api__field tavern-api__parameters-field"><label>请求参数</label><div class="tavern-api__row"><button id="tavern_api_additional_parameters" class="menu_button" type="button"><i class="fa-solid fa-sliders" aria-hidden="true"></i> 附加参数</button><button class="menu_button tavern-api__manage-actions" type="button"><i class="fa-solid fa-bolt" aria-hidden="true"></i> 快捷方案</button></div></div>
             </div>

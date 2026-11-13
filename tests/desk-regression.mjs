@@ -100,6 +100,7 @@ export async function runDeskRegressions({ page, state, log, scopedHost, setView
         await run(`extension_settings[MODULE_NAME]=structuredClone(layoutCaptureBefore); renderProfiles('desk-main')`);
         await capture('inline-populated');
     }
+    await setViewport(1280, 1000);
     await run(`$('#tavern_api_expand').trigger('click'); new Promise(r=>setTimeout(r,30))`);
     assert.equal(await run('deskWorkspace.open'), true);
     assert.equal(await run(`document.activeElement.id`), 'tavern_api_search');
@@ -107,7 +108,6 @@ export async function runDeskRegressions({ page, state, log, scopedHost, setView
     assert.equal(await run(`deskWorkspace.contains(quickUrlMenu[0])`), true);
     await run(`closeQuickUrlMenu()`);
     log('workspace URL shortcuts stay inside the modal top layer and remain interactive');
-    await setViewport(1280, 1000);
     await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     assert.equal(await run(`document.documentElement.scrollWidth<=innerWidth`), true);
     assert.deepEqual(await run(`(() => {
