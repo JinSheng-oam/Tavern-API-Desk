@@ -520,15 +520,104 @@
     margin: 0;
 }
 
+.tavern-api__model-browser .tavern-api__model-search input::-webkit-search-cancel-button {
+    display: none;
+}
+
 .tavern-api__model-search > button {
     flex: 0 0 auto;
 }
 
-.tavern-api__model-search-help,
 .tavern-api__model-search-count {
     text-align: left;
     overflow-wrap: anywhere;
     opacity: 0.8;
+}
+
+dialog.popup:has(.tavern-api__model-browser) {
+    width: min(96dvw, 76rem);
+    height: min(88dvh, 46rem) !important;
+    min-height: 0;
+    max-height: calc(100dvh - 1rem);
+    padding: 0.65rem;
+}
+
+dialog.popup:has(.tavern-api__model-browser) :is(.popup-body, .popup-content) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    max-height: none;
+    overflow: hidden;
+}
+
+dialog.popup:has(.tavern-api__model-browser) .popup-content {
+    margin: 0;
+    padding: 0;
+}
+
+dialog.popup:has(.tavern-api__model-browser) .popup-controls {
+    display: flex;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+    margin: 0;
+    padding-top: 0.55rem;
+}
+
+.tavern-api__model-browser {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    gap: 0.55rem;
+}
+
+.tavern-api__model-browser-title {
+    margin: 0;
+    font-size: 1.08em;
+}
+
+.tavern-api__model-views {
+    display: none;
+}
+
+.tavern-api__model-browser .tavern-api__manager-columns {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+}
+
+.tavern-api__model-browser .tavern-api__manager-panel {
+    min-height: 0;
+    overflow: auto;
+}
+
+.tavern-api__model-browser .tavern-api__manager-panel > :not(.tavern-api__model-list) {
+    flex-shrink: 0;
+}
+
+.tavern-api__model-browser .tavern-api__manager-panel h4 {
+    text-align: left;
+}
+
+.tavern-api__model-browser .tavern-api__manager-actions > input {
+    min-width: 0;
+    flex: 1 1 0;
+}
+
+.tavern-api__model-browser .tavern-api__model-list {
+    min-height: min(5.5rem, 24dvh);
+    max-height: none;
+}
+
+.tavern-api__remote-model-name {
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+}
+
+.tavern-api__model-browser .tavern-api__chosen-model > input {
+    width: 100%;
+    min-width: 0;
 }
 
 .tavern-api__model-list {
@@ -701,16 +790,6 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .menu_button:focus-
         animation: none !important;
         scroll-behavior: auto !important;
         transition: none !important;
-    }
-}
-
-@media (max-width: 850px) {
-    .tavern-api__manager-columns {
-        grid-template-columns: 1fr;
-    }
-
-    .tavern-api__model-list {
-        max-height: 38vh;
     }
 }
 
@@ -1506,6 +1585,83 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 }
 
 @media (max-width: 767px), (pointer: coarse) {
+    dialog.popup:has(.tavern-api__model-browser) {
+        height: min(calc(100dvh - 1rem), 46rem) !important;
+        padding-bottom: max(0.55rem, env(safe-area-inset-bottom));
+        padding-inline: max(0.5rem, env(safe-area-inset-left)) max(0.5rem, env(safe-area-inset-right));
+    }
+
+    .tavern-api__model-browser .tavern-api__manager-columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tavern-api__model-views {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.35rem;
+    }
+
+    .tavern-api__model-views .menu_button[aria-pressed="true"] {
+        background: var(--desk-active-bg);
+        border-color: var(--desk-active-border);
+        font-weight: 700;
+    }
+
+    .tavern-api__model-browser[data-view="remote"] #tavern_api_chosen_models,
+    .tavern-api__model-browser[data-view="chosen"] #tavern_api_remote_models,
+    .tavern-api__model-browser .tavern-api__manager-panel > h4,
+    .tavern-api__model-browser .tavern-api__chosen-model > .tavern-api__drag-index,
+    .tavern-api__model-browser .tavern-api__chosen-model > .tavern-api__model-source-tag {
+        display: none;
+    }
+
+    .tavern-api__model-browser .tavern-api__manager-panel {
+        padding: 0.4rem;
+    }
+
+    .tavern-api__model-browser .tavern-api__manager-actions {
+        flex-wrap: nowrap;
+    }
+
+    .tavern-api__model-browser .tavern-api__manager-actions > button {
+        padding-inline: 0.35rem;
+    }
+
+    .tavern-api__model-browser .tavern-api__manager-actions > [data-action="add"] {
+        flex: 0 0 auto;
+        padding-inline: 0.65rem;
+    }
+
+    .tavern-api__model-browser .menu_button,
+    .tavern-api__model-browser .tavern-api__model-item,
+    dialog.popup:has(.tavern-api__model-browser) .popup-controls .menu_button {
+        min-height: 44px;
+        touch-action: manipulation;
+    }
+
+    .tavern-api__model-browser .tavern-api__model-search > :is(input, button),
+    .tavern-api__model-browser input.text_pole:not([readonly]) {
+        min-height: 44px;
+        font-size: max(16px, 1em);
+    }
+
+    .tavern-api__model-browser :is(.tavern-api__model-search > button, .tavern-api__item-actions > button) {
+        min-width: 44px;
+    }
+
+    .tavern-api__model-browser .tavern-api__chosen-model {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+
+    .tavern-api__model-browser .tavern-api__item-actions {
+        grid-column: 3;
+    }
+
+    dialog.popup:has(.tavern-api__model-browser) .popup-controls .menu_button {
+        flex: 1 1 0;
+        margin: 0;
+    }
+
     dialog.popup:has(.tavern-api__quick-manager) {
         width: min(96dvw, 42rem);
         height: min(calc(100dvh - 1rem), 46rem) !important;

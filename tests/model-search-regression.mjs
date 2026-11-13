@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 // Exercise the real model-manager DOM/draft and fetching path on both host adapters.
-export async function runModelSearchRegressions({ page, state, log, setViewport }) {
+export async function runModelSearchRegressions({ page, state, log, setViewport, capture }) {
     const run = page.evaluate;
     const initialRemote = ['GPT-4o', 'gpt-4.1-mini', 'Claude-3.5-Sonnet', 'claude-haiku', 'Gemini-2.5-Pro', 'special[Model]'];
     const refreshedRemote = ['GPT-4o', 'New-Wide-Model', 'Gemini-Next', 'unmatched-model'];
@@ -112,8 +112,8 @@ export async function runModelSearchRegressions({ page, state, log, setViewport 
     assert.equal(await run(`document.activeElement===document.querySelector('.tavern-api__model-search input')`), true);
     log('fetch completion uses the latest search query; clearing restores the complete snapshot without losing selections');
 
-    for (const width of [320, 768, 1280]) {
-        await setViewport(width, 700);
+    for (const [width, height, touch] of [[320, 568, true], [844, 390, true], [768, 700, false], [1280, 700, false]]) {
+        await setViewport(width, height, touch);
         const layout = await run(`(() => {
             const input=document.querySelector('.tavern-api__model-search input').getBoundingClientRect();
             const clear=document.querySelector('.tavern-api__model-search button').getBoundingClientRect();
@@ -121,8 +121,26 @@ export async function runModelSearchRegressions({ page, state, log, setViewport 
                 && Math.abs(input.top-clear.top)<1 && Math.abs(input.height-clear.height)<1;
         })()`);
         assert.equal(layout, true, `model search controls fit and align with equal heights at ${width}px`);
+        const usable = await run(`(() => {
+            const dialog = document.querySelector('dialog[open]');
+            const save = dialog.querySelector('.popup-controls button');
+            const r = save.getBoundingClientRect();
+            return dialog.scrollWidth <= dialog.clientWidth + 1 && r.bottom <= innerHeight
+                && save.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+        })()`);
+        assert.equal(usable, true, `save is reachable at ${width}x${height}`);
+        if (!touch) continue;
+        await search('nwm');
+        assert.equal(await run(`$('#tavern_api_chosen_models').is(':visible')`), false);
+        if (width === 320) await capture('model-search-mobile');
+        await run(`$('.tavern-api__model-views button').last().trigger('click')`);
+        assert.deepEqual(await run(`[$('#tavern_api_remote_models').is(':visible'), $('#tavern_api_chosen_models').is(':visible'),
+            $('.tavern-api__model-views button').last().attr('aria-pressed')]`), [false, true, 'true']);
+        if (width === 320) await capture('model-retained-mobile');
+        await run(`$('.tavern-api__model-views button').first().trigger('click')`);
+        assert.deepEqual(names(await run('searchRead()')), ['New-Wide-Model']);
     }
-    log('search and clear controls remain accessible at 320px, tablet and desktop widths');
+    log('model search, mobile view switching and save fit portrait, landscape and desktop without losing the filter');
     await run('[...ownedPopups][0].completeCancelled(); searchTask');
     assert.equal(await run('JSON.stringify(searchProfile)===searchOriginalProfile'), true);
     log('cancelling after a remote fetch also discards the refreshed snapshot and draft selections');
@@ -132,7 +150,7 @@ export async function runModelSearchRegressions({ page, state, log, setViewport 
     for (let i = 0; i < 100 && await run(`$('.tavern-api__manager-panel').first().find('[data-action="fetch"]').prop('disabled')`); i++) await new Promise(resolve => setTimeout(resolve, 20));
     assert.deepEqual(names(await run('searchRead()')), ['New-Wide-Model']);
     await toggle('New-Wide-Model');
-    await run('[...ownedPopups][0].completeAffirmative(); searchTask');
+    await run(`document.querySelector('dialog[open] .popup-controls button').click(); searchTask`);
     assert.equal(await run('searchProfile.availableModels.includes("New-Wide-Model")'), true);
     assert.deepEqual(await run('searchProfile.fetchedModels'), refreshedRemote);
     assert.equal(await run('persistSettingsNow()'), true);

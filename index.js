@@ -2621,36 +2621,49 @@ async function manageCustomModels() {
     if (draft.current && !draft.available.includes(draft.current)) draft.available.unshift(draft.current);
     const initialDraft = structuredClone(draft);
 
-    const content = $('<div class="tavern-api__model-manager">');
-    content.append($('<div class="tavern-api__manager-note">').text('所有修改仅在确认后保存，取消会完整回滚。'));
+    const content = $('<div class="tavern-api__model-manager tavern-api__model-browser" data-view="remote">');
+    const title = $('<h3 class="tavern-api__model-browser-title">搜索模型</h3>');
+    const views = $('<div class="tavern-api__model-views" role="group" aria-label="模型列表视图">');
+    const remoteView = $('<button type="button" class="menu_button" aria-controls="tavern_api_remote_models" aria-pressed="true">远端模型</button>');
+    const chosenView = $('<button type="button" class="menu_button" aria-controls="tavern_api_chosen_models" aria-pressed="false">');
+    views.append(remoteView, chosenView);
+    const showView = view => {
+        content.attr('data-view', view);
+        remoteView.attr('aria-pressed', String(view === 'remote'));
+        chosenView.attr('aria-pressed', String(view === 'chosen'));
+    };
+    remoteView.on('click', () => showView('remote'));
+    chosenView.on('click', () => showView('chosen'));
     const columns = $('<div class="tavern-api__manager-columns">');
-    const remotePanel = $('<section class="tavern-api__manager-panel">');
-    const chosenPanel = $('<section class="tavern-api__manager-panel">');
+    const remotePanel = $('<section id="tavern_api_remote_models" class="tavern-api__manager-panel" aria-label="远端模型">');
+    const chosenPanel = $('<section id="tavern_api_chosen_models" class="tavern-api__manager-panel" aria-label="已保留模型">');
     const remoteActions = $('<div class="tavern-api__manager-actions">').append(
         $('<button type="button" class="menu_button" data-action="fetch"><i class="fa-solid fa-arrows-rotate"></i><span>获取</span></button>'),
         $('<button type="button" class="menu_button" data-action="all">全选</button>'),
         $('<button type="button" class="menu_button" data-action="invert">反选</button>'),
         $('<button type="button" class="menu_button" data-action="none">全不选</button>'),
     );
-    const customInput = $('<input class="text_pole" type="text" autocomplete="off" placeholder="自定义模型 ID">');
-    const chosenActions = $('<div class="tavern-api__manager-actions">').append(
-        customInput,
-        $('<button type="button" class="menu_button" data-action="add"><i class="fa-solid fa-plus"></i><span>新增</span></button>'),
+    const customInput = $('<input class="text_pole" type="text" autocomplete="off" aria-label="自定义模型 ID" placeholder="自定义模型 ID">');
+    const resetActions = $('<div class="tavern-api__manager-actions">').append(
         $('<button type="button" class="menu_button" data-action="clear">清空</button>'),
         $('<button type="button" class="menu_button" data-action="reset">重置</button>'),
     );
+    const chosenActions = $('<div class="tavern-api__manager-actions">').append(
+        customInput,
+        $('<button type="button" class="menu_button" data-action="add"><i class="fa-solid fa-plus"></i><span>新增</span></button>'),
+    );
     const remoteSearch = $('<div class="tavern-api__model-search">');
     const searchInput = $('<input class="text_pole" type="search" autocomplete="off" placeholder="搜索远端模型" aria-label="搜索远端模型">');
-    const clearSearch = $('<button type="button" class="menu_button" aria-label="清空模型搜索">清空搜索</button>');
+    const clearSearch = $('<button type="button" class="menu_button" title="清空搜索" aria-label="清空模型搜索"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>');
     const searchCount = $('<small class="tavern-api__model-search-count" role="status" aria-live="polite">');
     remoteSearch.append(searchInput, clearSearch);
-    const searchHelp = $('<small class="tavern-api__model-search-help">').text('忽略大小写，支持部分名称或按顺序输入不连续字符；筛选时批量操作仅影响匹配项。');
     const remoteList = $('<div class="tavern-api__model-list">');
     const chosenList = $('<div class="tavern-api__model-list">');
-    remotePanel.append($('<h4><i class="fa-solid fa-cloud-arrow-down"></i> 远端模型</h4>'), remoteActions, remoteSearch, searchHelp, searchCount, remoteList);
-    chosenPanel.append($('<h4><i class="fa-solid fa-list-check"></i> 下拉留存 / 自定义</h4>'), chosenActions, chosenList);
+    remotePanel.append($('<h4>远端模型</h4>'), remoteSearch, remoteActions, searchCount, remoteList);
+    const chosenHeading = $('<h4>');
+    chosenPanel.append(chosenHeading, chosenActions, resetActions, chosenList);
     columns.append(remotePanel, chosenPanel);
-    content.append(columns);
+    content.append(title, views, columns);
 
     const ensureCurrent = () => {
         draft.available = normalizeModelList(draft.available);
@@ -2678,6 +2691,7 @@ async function manageCustomModels() {
         const remote = new Set(draft.fetched);
         const matching = filteredRemoteModels();
         searchCount.text(`显示 ${matching.length} / ${draft.fetched.length} 个模型`);
+        searchCount.attr('title', '支持部分名称和按顺序输入不连续字符；批量操作只影响搜索结果。');
         remoteList.empty();
         if (!draft.fetched.length) remoteList.append($('<div class="tavern-api__empty-state">').text('尚无当前 URL 的远端快照'));
         else if (!matching.length) remoteList.append($('<div class="tavern-api__empty-state">').text('没有匹配的远端模型，请尝试其他关键词或清空搜索'));
@@ -2694,7 +2708,7 @@ async function manageCustomModels() {
             const row = $('<div class="tavern-api__model-item tavern-api__remote-model" role="checkbox" tabindex="0">')
                 .attr('aria-checked', selected.has(model))
                 .attr('data-current', String(isCurrent))
-                .append(checkbox, $('<span>').text(model), $('<small>').text('远端'), useAction)
+                .append(checkbox, $('<span class="tavern-api__remote-model-name">').text(model), useAction)
                 .on('dblclick', () => selectModel(model));
             const toggle = checked => {
                 if (checked) draft.available = normalizeModelList([...draft.available, model]);
@@ -2704,8 +2718,9 @@ async function manageCustomModels() {
             };
             checkbox.on('click', event => event.stopPropagation()).on('change', () => toggle(checkbox.prop('checked')));
             row.on('click', () => toggle(!selected.has(model))).on('keydown', event => {
-                if (event.key === ' ' || event.key === 'Enter') {
+                if (event.target === row[0] && (event.key === ' ' || event.key === 'Enter')) {
                     event.preventDefault();
+                    event.stopPropagation();
                     toggle(!selected.has(model));
                 }
             });
@@ -2713,6 +2728,8 @@ async function manageCustomModels() {
         }
 
         if (remoteOnly) return; // Searching must not reset an in-progress chosen-list edit.
+        chosenHeading.text(`已保留 · ${draft.available.length}`);
+        chosenView.text(`已保留 ${draft.available.length}`);
         chosenList.empty();
         if (!draft.available.length) chosenList.append($('<div class="tavern-api__empty-state">').text('留存列表为空'));
         draft.available.forEach((model, index) => {
@@ -2798,7 +2815,7 @@ async function manageCustomModels() {
         markCustomized();
         renderManager();
     };
-    chosenActions.on('click', 'button', function () {
+    chosenActions.add(resetActions).on('click', 'button', function () {
         const action = String($(this).data('action'));
         if (action === 'add') addDraftModel();
         if (action === 'clear') {
@@ -2815,6 +2832,7 @@ async function manageCustomModels() {
     customInput.on('keydown', event => {
         if (event.key === 'Enter') {
             event.preventDefault();
+            event.stopPropagation();
             addDraftModel();
         }
     });

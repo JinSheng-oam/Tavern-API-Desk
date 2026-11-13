@@ -603,12 +603,23 @@ try {
     await touch('toggleDeskWorkspace()');
     assert.equal(await touch('document.activeElement.id'), 'tavern_api_expand');
     log('opening the touch workspace leaves focus on its button');
-    await runCompatibilityRegressions({ page: await newPage(), scopedHost, log });
-    await runPresetRegressions({ page: await newPage(), state, log });
+    const beforeModelSearch = structuredClone(state.settings);
     const modelSearchPage = await newPage();
     await runModelSearchRegressions({ page: modelSearchPage, state, log,
-        setViewport: (width, height) => cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, modelSearchPage.sessionId),
+        setViewport: async (width, height, touch = false) => {
+            await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: touch }, modelSearchPage.sessionId);
+            await cdp('Emulation.setTouchEmulationEnabled', { enabled: touch }, modelSearchPage.sessionId);
+        },
+        capture: async name => {
+            if (!process.env.API_DESK_CAPTURE_DIR) return;
+            await mkdir(process.env.API_DESK_CAPTURE_DIR, { recursive: true });
+            const screenshot = await cdp('Page.captureScreenshot', { format: 'png' }, modelSearchPage.sessionId);
+            await writeFile(path.join(process.env.API_DESK_CAPTURE_DIR, `${name}.png`), Buffer.from(screenshot.data, 'base64'));
+        },
     });
+    state.settings = beforeModelSearch;
+    await runCompatibilityRegressions({ page: await newPage(), scopedHost, log });
+    await runPresetRegressions({ page: await newPage(), state, log });
     const deskPage = await newPage();
     await runDeskRegressions({ page: deskPage, state, log, scopedHost,
         setViewport: (width, height) => cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, deskPage.sessionId),

@@ -101,11 +101,11 @@ class Popup {
         $(this.dlg).find('.popup-content').append(content);
     }
     show() {
-        if (location.pathname === '/preview') {
+        if (location.pathname === '/preview' || this.dlg.querySelector('.tavern-api__model-browser')) {
             const controls = this.dlg.querySelector('.popup-controls');
-            const ok = document.createElement('button'); ok.className = 'menu_button'; ok.textContent = '确认';
+            const ok = document.createElement('button'); ok.className = 'menu_button'; ok.textContent = this.options.okButton || '确认';
             ok.addEventListener('click', () => this.completeAffirmative()); controls.append(ok);
-            const cancel = document.createElement('button'); cancel.className = 'menu_button'; cancel.textContent = '取消';
+            const cancel = document.createElement('button'); cancel.className = 'menu_button'; cancel.textContent = this.options.cancelButton || '取消';
             cancel.addEventListener('click', () => this.completeCancelled()); controls.append(cancel);
         }
         document.body.append(this.dlg);
