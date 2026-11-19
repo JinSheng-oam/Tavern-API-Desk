@@ -599,10 +599,12 @@ try {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false }, syncPage.sessionId);
     await sync(`document.querySelector('.tavern-api__quick-sync-native').click()`);
     assert.deepEqual(await sync(`[...document.querySelectorAll('.tavern-api__quick-select')].map(node => node.textContent)`),
-        ['home-model-a', 'home-model-b']);
+        ['home-model-a', 'model-a', 'home-model-b', 'model-b']);
+    await sync(`document.querySelector('.tavern-api__quick-sync-native').click()`);
+    assert.equal(await sync(`document.querySelectorAll('.tavern-api__quick-item').length`), 4);
     await sync(`document.querySelector('.tavern-api__quick-sync-all').click()`);
     assert.deepEqual(await sync(`[...document.querySelectorAll('.tavern-api__quick-select')].map(node => node.textContent)`),
-        ['home-model-a', 'home-model-b', 'model-a', 'model-b']);
+        ['home-model-a', 'model-a', 'home-model-b', 'model-b']);
     await sync(`document.querySelector('.tavern-api__quick-sync-all').click()`);
     assert.equal(await sync(`document.querySelectorAll('.tavern-api__quick-item').length`), 4);
     await sync(`document.querySelector('.tavern-api__quick-header-actions .tavern-api__save-button').click()`);
@@ -611,16 +613,16 @@ try {
     }
     assert.deepEqual(await sync(`settings().quickActions.map(({ name, preset, model }) => ({ name, preset, model }))`), [
         { name: 'home-model-a', preset: 'A', model: 'home-model-a' },
+        { name: 'model-a', preset: 'A', model: 'model-a' },
         { name: 'home-model-b', preset: 'B', model: 'home-model-b' },
-        { name: 'model-a', preset: '', model: 'model-a' },
-        { name: 'model-b', preset: '', model: 'model-b' },
+        { name: 'model-b', preset: 'B', model: 'model-b' },
     ]);
     await syncPage.reload();
     assert.deepEqual(await sync(`settings().quickActions.map(({ name, preset, model }) => ({ name, preset, model }))`), [
         { name: 'home-model-a', preset: 'A', model: 'home-model-a' },
+        { name: 'model-a', preset: 'A', model: 'model-a' },
         { name: 'home-model-b', preset: 'B', model: 'home-model-b' },
-        { name: 'model-a', preset: '', model: 'model-a' },
-        { name: 'model-b', preset: '', model: 'model-b' },
+        { name: 'model-b', preset: 'B', model: 'model-b' },
     ]);
     await sync(`extension_settings.tavernApiDesk = ${JSON.stringify(syncDeskBaseline)}; persistSettingsNow()`);
     log('quick actions default to model names, sync bound presets, and fill every Profile model without duplicates');

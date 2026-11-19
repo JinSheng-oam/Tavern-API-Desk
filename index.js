@@ -2986,47 +2986,61 @@ function nativePresetQuickActionModel(name, profile) {
         && snapshotModel && !platform.isModelAction(snapshotModel) ? snapshotModel : '';
 }
 
+function quickActionModelsForProfile(profile, preferredModel = '') {
+    if (!profile) return [];
+    return normalizeModelList([
+        preferredModel,
+        profile.model,
+        ...(profile.availableModels || []),
+    ]).filter(model => !platform.isModelAction(model));
+}
+
 function syncQuickActionsFromNativePresets(actions) {
     const presetNames = $('#settings_preset_openai option')
         .map((_, option) => normalizeText(option.textContent)).get().filter(Boolean);
-    const boundModels = new Map();
+    const boundPresets = [];
     for (const preset of presetNames) {
         const profile = profiles().find(item => item.id === settings().presetBindings[preset]);
-        const model = nativePresetQuickActionModel(preset, profile);
-        if (profile && model) boundModels.set(preset, { preset, profileId: profile.id, model });
+        if (!profile) continue;
+        const currentModel = nativePresetQuickActionModel(preset, profile);
+        const models = quickActionModelsForProfile(profile, currentModel);
+        if (models.length) boundPresets.push({ preset, profile, models });
     }
 
     let updated = 0;
-    for (const action of actions) {
-        if (!action.preset) continue;
-        const profile = profiles().find(item => item.id === settings().presetBindings[action.preset])
-            || profiles().find(item => item.id === action.profileId);
-        const model = nativePresetQuickActionModel(action.preset, profile);
-        if (!model) continue;
-        if (profile && action.profileId !== profile.id) {
-            action.profileId = profile.id;
-            updated++;
-        }
-        const previousModel = sanitizeName(action.model);
-        const previousName = sanitizeName(action.name);
-        if (action.model !== model) {
-            action.model = model;
-            updated++;
-        }
-        if (!previousName || previousName === previousModel) {
-            action.name = model;
-        }
-    }
-
-    const representedPresets = new Set(actions.map(action => action.preset).filter(Boolean));
     let added = 0;
-    for (const [preset, entry] of boundModels) {
-        if (representedPresets.has(preset)) continue;
-        actions.push(normalizeQuickAction({
-            id: makeId('quick-action'), name: entry.model, preset,
-            profileId: entry.profileId, model: entry.model,
-        }, actions.length));
-        added++;
+    for (const { preset, profile, models } of boundPresets) {
+        const existing = actions.filter(action => action.preset === preset);
+        const representedModels = new Set();
+        for (const action of existing) {
+            const actionIndex = actions.indexOf(action);
+            if (actionIndex < 0) continue;
+            const validModel = models.includes(action.model) && !representedModels.has(action.model);
+            const replacement = validModel ? action.model : models.find(model => !representedModels.has(model));
+            if (!replacement) {
+                actions.splice(actionIndex, 1);
+                updated++;
+                continue;
+            }
+            const previousModel = action.model;
+            const previousName = sanitizeName(action.name);
+            const profileChanged = action.profileId !== profile.id;
+            representedModels.add(replacement);
+            if (action.model === replacement && !profileChanged) continue;
+            action.model = replacement;
+            action.profileId = profile.id;
+            if (!previousName || previousName === sanitizeName(previousModel)) action.name = replacement;
+            updated++;
+        }
+        for (const model of models) {
+            if (representedModels.has(model)) continue;
+            actions.push(normalizeQuickAction({
+                id: makeId('quick-action'), name: model, preset,
+                profileId: profile.id, model,
+            }, actions.length));
+            representedModels.add(model);
+            added++;
+        }
     }
     return { updated, added, total: updated + added };
 }
@@ -3035,9 +3049,8 @@ function syncAllQuickActionsFromProfiles(actions) {
     let added = 0;
     for (const profile of profiles()) {
         if (!hasManagedModels(profile.format)) continue;
-        const models = normalizeModelList([profile.model, ...(profile.availableModels || [])]);
+        const models = quickActionModelsForProfile(profile);
         for (const model of models) {
-            if (platform.isModelAction(model)) continue;
             const existing = actions.find(action => {
                 if (action.model !== model) return false;
                 if (!action.profileId) return false;
