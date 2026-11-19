@@ -1295,7 +1295,9 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
 .tavern-api__quick-list-actions {
     display: flex;
     min-width: 0;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.45rem;
 }
 
@@ -1932,8 +1934,13 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 
     .tavern-api__quick-list-actions .menu_button {
         min-width: 0;
-        flex: 1 1 0;
+        flex: 1 1 6rem;
         padding-inline: 0.45rem;
+    }
+
+    .tavern-api__quick-list-actions > .tavern-api__quick-sync-native,
+    .tavern-api__quick-list-actions > .tavern-api__quick-sync-all {
+        flex-basis: calc(50% - 0.25rem);
     }
 }
 

@@ -558,23 +558,29 @@ try {
     assert.equal(state.settings.extension_settings.tavernApiDesk.quickActions[0].name, 'Unsaved');
     log('detail plus global save persists schemes before closing the manager');
 
-    const syncQuickActionsBaseline = structuredClone(state.settings.extension_settings.tavernApiDesk.quickActions);
+    const syncDeskBaseline = structuredClone(state.settings.extension_settings.tavernApiDesk);
     const syncPage = await newPage();
     const sync = syncPage.evaluate;
     assert.equal(await sync(`quickActionDisplayName({ name: '', model: 'fresh-model' })`), 'fresh-model');
     await sync(`
         openai_settings[openai_setting_names.A].custom_model = '';
         openai_settings[openai_setting_names.B].custom_model = 'home-model-b';
-        settings().presetBindings.A = ${JSON.stringify(profile.id)};
-        settings().presetBindings.B = ${JSON.stringify(profile.id)};
+        settings().profiles = [
+            normalizeProfile({ ...${JSON.stringify(profile)}, id: 'sync-profile-a', name: 'Sync A',
+                model: 'home-model-a', availableModels: ['home-model-a', 'model-a'] }),
+            normalizeProfile({ ...${JSON.stringify(profile)}, id: 'sync-profile-b', name: 'Sync B',
+                model: 'home-model-b', availableModels: ['home-model-b', 'model-b'] }),
+        ];
+        settings().presetBindings.A = 'sync-profile-a';
+        settings().presetBindings.B = 'sync-profile-b';
         settings().presetModels.A = {
-            profileId: ${JSON.stringify(profile.id)}, format: 'openai', model: 'home-model-a'
+            profileId: 'sync-profile-a', format: 'openai', model: 'home-model-a'
         };
         settings().presetModels.B = {
-            profileId: ${JSON.stringify(profile.id)}, format: 'openai', model: 'stale-model-b'
+            profileId: 'sync-profile-b', format: 'openai', model: 'stale-model-b'
         };
         settings().quickActions = [normalizeQuickAction({
-            id: 'sync-a', name: '', preset: 'A', profileId: ${JSON.stringify(profile.id)}, model: 'stale-model'
+            id: 'sync-a', name: '', preset: 'A', profileId: 'sync-profile-a', model: 'stale-model'
         })];
         void manageQuickActions();
         true
@@ -584,11 +590,21 @@ try {
     }
     assert.deepEqual(await sync(`[
         document.querySelector('.tavern-api__quick-field input')?.placeholder,
-        Boolean(document.querySelector('.tavern-api__quick-sync-native'))
-    ]`), ['留空使用模型名称', true]);
+        Boolean(document.querySelector('.tavern-api__quick-sync-native')),
+        Boolean(document.querySelector('.tavern-api__quick-sync-all'))
+    ]`), ['留空使用模型名称', true, true]);
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true }, syncPage.sessionId);
+    assert.equal(await sync(`[...document.querySelectorAll('.tavern-api__quick-list-actions .menu_button')]
+        .every(button => { const rect = button.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth; })`), true);
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false }, syncPage.sessionId);
     await sync(`document.querySelector('.tavern-api__quick-sync-native').click()`);
     assert.deepEqual(await sync(`[...document.querySelectorAll('.tavern-api__quick-select')].map(node => node.textContent)`),
         ['home-model-a', 'home-model-b']);
+    await sync(`document.querySelector('.tavern-api__quick-sync-all').click()`);
+    assert.deepEqual(await sync(`[...document.querySelectorAll('.tavern-api__quick-select')].map(node => node.textContent)`),
+        ['home-model-a', 'home-model-b', 'model-a', 'model-b']);
+    await sync(`document.querySelector('.tavern-api__quick-sync-all').click()`);
+    assert.equal(await sync(`document.querySelectorAll('.tavern-api__quick-item').length`), 4);
     await sync(`document.querySelector('.tavern-api__quick-header-actions .tavern-api__save-button').click()`);
     for (let i = 0; i < 50 && await sync(`Boolean(document.querySelector('dialog[open] .tavern-api__quick-manager'))`); i++) {
         await new Promise(resolve => setTimeout(resolve, 30));
@@ -596,14 +612,18 @@ try {
     assert.deepEqual(await sync(`settings().quickActions.map(({ name, preset, model }) => ({ name, preset, model }))`), [
         { name: 'home-model-a', preset: 'A', model: 'home-model-a' },
         { name: 'home-model-b', preset: 'B', model: 'home-model-b' },
+        { name: 'model-a', preset: '', model: 'model-a' },
+        { name: 'model-b', preset: '', model: 'model-b' },
     ]);
     await syncPage.reload();
     assert.deepEqual(await sync(`settings().quickActions.map(({ name, preset, model }) => ({ name, preset, model }))`), [
         { name: 'home-model-a', preset: 'A', model: 'home-model-a' },
         { name: 'home-model-b', preset: 'B', model: 'home-model-b' },
+        { name: 'model-a', preset: '', model: 'model-a' },
+        { name: 'model-b', preset: '', model: 'model-b' },
     ]);
-    await sync(`settings().quickActions = ${JSON.stringify(syncQuickActionsBaseline)}; persistSettingsNow()`);
-    log('quick actions default to model names and sync every bound native preset model without duplicates');
+    await sync(`extension_settings.tavernApiDesk = ${JSON.stringify(syncDeskBaseline)}; persistSettingsNow()`);
+    log('quick actions default to model names, sync bound presets, and fill every Profile model without duplicates');
 
     const orderPage = await newPage();
     const order = orderPage.evaluate;

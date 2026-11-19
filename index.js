@@ -3031,6 +3031,32 @@ function syncQuickActionsFromNativePresets(actions) {
     return { updated, added, total: updated + added };
 }
 
+function syncAllQuickActionsFromProfiles(actions) {
+    let added = 0;
+    for (const profile of profiles()) {
+        if (!hasManagedModels(profile.format)) continue;
+        const models = normalizeModelList([profile.model, ...(profile.availableModels || [])]);
+        for (const model of models) {
+            if (platform.isModelAction(model)) continue;
+            const existing = actions.find(action => {
+                if (action.model !== model) return false;
+                if (!action.profileId) return false;
+                return action.profileId === profile.id;
+            });
+            if (existing) {
+                const previousName = sanitizeName(existing.name);
+                if (!previousName || previousName === sanitizeName(existing.model)) existing.name = model;
+                continue;
+            }
+            actions.push(normalizeQuickAction({
+                id: makeId('quick-action'), name: model, profileId: profile.id, model,
+            }, actions.length));
+            added++;
+        }
+    }
+    return { added, total: added };
+}
+
 function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, character => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -3128,11 +3154,12 @@ async function manageQuickActions() {
     const close = $('<button type="button" class="menu_button" title="关闭并丢弃更改" aria-label="关闭并丢弃更改"><i class="fa-solid fa-xmark"></i></button>');
     header.append(title, $('<div class="tavern-api__quick-header-actions">').append(placementButton, saveAll, close));
     const add = $('<button class="menu_button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>新增方案</span></button>');
-    const syncNative = $('<button class="menu_button tavern-api__quick-sync-native" type="button" title="从主页预设同步全部模型"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>同步主页模型</span></button>');
+    const syncNative = $('<button class="menu_button tavern-api__quick-sync-native" type="button" title="按主页预设绑定同步模型"><i class="fa-solid fa-link" aria-hidden="true"></i><span>同步预设</span></button>');
+    const syncAll = $('<button class="menu_button tavern-api__quick-sync-all" type="button" title="从主页全部配置同步模型"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>同步全部</span></button>');
     const listTitle = $('<strong>').text('方案列表');
     const list = $('<div class="tavern-api__quick-list">');
     const listItems = $('<div class="tavern-api__quick-list-items" role="listbox" aria-label="便捷方案">');
-    const listActions = $('<div class="tavern-api__quick-list-actions">').append(syncNative, add);
+    const listActions = $('<div class="tavern-api__quick-list-actions">').append(syncNative, syncAll, add);
     list.append($('<div class="tavern-api__quick-list-toolbar">').append(listTitle, listActions), listItems);
     const editor = $('<div class="tavern-api__quick-editor">');
     const back = $('<button type="button" class="menu_button tavern-api__quick-back-to-list"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>返回列表</span></button>');
@@ -3378,6 +3405,16 @@ async function manageQuickActions() {
         render();
         if (!result.total) return toastr.warning('主页预设中没有可同步的已绑定模型，请先保存对应 API 配置。');
         toastr.success(`已同步主页模型：更新 ${result.updated} 个，新增 ${result.added} 个。点击“保存全部”写入设置。`);
+    });
+    syncAll.on('click', () => {
+        if (!commitDetailDraft()) return toastr.warning('当前方案尚未填写完成，请补充后重试同步。');
+        const result = syncAllQuickActionsFromProfiles(globalDraft);
+        const selected = globalDraft.find(item => item.id === selectedId) || null;
+        detailDraft = selected ? structuredClone(selected) : null;
+        detailBaseline = detailDraft ? JSON.stringify(detailDraft) : '';
+        render();
+        if (!result.total) return toastr.warning('主页配置中没有可同步的模型，请先获取或添加模型。');
+        toastr.success(`已从主页全部配置新增 ${result.added} 个快捷方案。点击“保存全部”写入设置。`);
     });
     placementButton.on('click', () => void chooseQuickActionPlacement(draftPlacement, value => {
         draftPlacement = value;
