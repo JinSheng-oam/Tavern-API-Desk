@@ -2964,7 +2964,56 @@ async function manageCustomModels() {
 }
 
 function quickActionDisplayName(action, index = 0) {
-    return sanitizeName(action.name) || `方案${index + 1}`;
+    return sanitizeName(action.name) || sanitizeName(action.model) || `方案${index + 1}`;
+}
+
+function nativePresetQuickActionModel(name, profile) {
+    const preset = nativePresetByName(name);
+    const config = FORMATS[profile?.format];
+    if (!preset || !config || !matchesFormat(profile.format, preset) || typeof preset[config.modelField] !== 'string') return '';
+    const model = normalizeText(preset[config.modelField]).slice(0, 500);
+    return model && !platform.isModelAction(model) ? model : '';
+}
+
+function syncQuickActionsFromNativePresets(actions) {
+    const presetNames = $('#settings_preset_openai option')
+        .map((_, option) => normalizeText(option.textContent)).get().filter(Boolean);
+    const boundModels = new Map();
+    for (const preset of presetNames) {
+        const profile = profiles().find(item => item.id === settings().presetBindings[preset]);
+        const model = nativePresetQuickActionModel(preset, profile);
+        if (profile && model) boundModels.set(preset, { preset, profileId: profile.id, model });
+    }
+
+    let updated = 0;
+    for (const action of actions) {
+        if (!action.preset) continue;
+        const profile = profiles().find(item => item.id === action.profileId)
+            || profiles().find(item => item.id === settings().presetBindings[action.preset]);
+        const model = nativePresetQuickActionModel(action.preset, profile);
+        if (!model) continue;
+        const previousModel = sanitizeName(action.model);
+        const previousName = sanitizeName(action.name);
+        if (action.model !== model) {
+            action.model = model;
+            updated++;
+        }
+        if (!previousName || previousName === previousModel) {
+            action.name = model;
+        }
+    }
+
+    const representedPresets = new Set(actions.map(action => action.preset).filter(Boolean));
+    let added = 0;
+    for (const [preset, entry] of boundModels) {
+        if (representedPresets.has(preset)) continue;
+        actions.push(normalizeQuickAction({
+            id: makeId('quick-action'), name: entry.model, preset,
+            profileId: entry.profileId, model: entry.model,
+        }, actions.length));
+        added++;
+    }
+    return { updated, added, total: updated + added };
 }
 
 function escapeHtml(value) {
@@ -3064,10 +3113,12 @@ async function manageQuickActions() {
     const close = $('<button type="button" class="menu_button" title="关闭并丢弃更改" aria-label="关闭并丢弃更改"><i class="fa-solid fa-xmark"></i></button>');
     header.append(title, $('<div class="tavern-api__quick-header-actions">').append(placementButton, saveAll, close));
     const add = $('<button class="menu_button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>新增方案</span></button>');
+    const syncNative = $('<button class="menu_button tavern-api__quick-sync-native" type="button" title="从主页预设同步全部模型"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>同步主页模型</span></button>');
     const listTitle = $('<strong>').text('方案列表');
     const list = $('<div class="tavern-api__quick-list">');
     const listItems = $('<div class="tavern-api__quick-list-items" role="listbox" aria-label="便捷方案">');
-    list.append($('<div class="tavern-api__quick-list-toolbar">').append(listTitle, add), listItems);
+    const listActions = $('<div class="tavern-api__quick-list-actions">').append(syncNative, add);
+    list.append($('<div class="tavern-api__quick-list-toolbar">').append(listTitle, listActions), listItems);
     const editor = $('<div class="tavern-api__quick-editor">');
     const back = $('<button type="button" class="menu_button tavern-api__quick-back-to-list"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>返回列表</span></button>');
     content.append(header, $('<div class="tavern-api__quick-columns">').append(list, editor));
@@ -3188,7 +3239,7 @@ async function manageQuickActions() {
             editor.append($('<div class="tavern-api__empty-state">').text('新增方案后，可自由组合 preset、Profile 与 model。'));
             return;
         }
-        const name = $('<input class="text_pole" type="text" maxlength="120" placeholder="留空自动命名为方案N">').val(detailDraft.name);
+        const name = $('<input class="text_pole" type="text" maxlength="120" placeholder="留空使用模型名称">').val(detailDraft.name);
         const preset = $(`<select class="text_pole">${presetOptionsHtml(detailDraft.preset)}</select>`);
         const profileSelect = $(`<select class="text_pole">${profileOptionsHtml(detailDraft.profileId)}</select>`);
         const modelInput = $('<input class="text_pole" type="text" maxlength="500" aria-label="自定义模型 ID" placeholder="输入模型 ID">').val(detailDraft.model);
@@ -3288,10 +3339,30 @@ async function manageQuickActions() {
         renderEditor();
         updateSaveState();
     };
+    const commitDetailDraft = () => {
+        if (!detailDraft || JSON.stringify(detailDraft) === detailBaseline) return true;
+        if (!detailDraft.preset && !detailDraft.profileId && !detailDraft.model) return false;
+        const index = globalDraft.findIndex(item => item.id === selectedId);
+        if (index < 0) return false;
+        globalDraft[index] = normalizeQuickAction(structuredClone(detailDraft), index);
+        detailDraft = structuredClone(globalDraft[index]);
+        detailBaseline = JSON.stringify(detailDraft);
+        return true;
+    };
     add.on('click', () => {
         const action = normalizeQuickAction({ id: makeId('quick-action'), sequence: globalDraft.length });
         globalDraft.push(action);
         editAction(action.id);
+    });
+    syncNative.on('click', () => {
+        if (!commitDetailDraft()) return toastr.warning('当前方案尚未填写完成，请补充后重试同步。');
+        const result = syncQuickActionsFromNativePresets(globalDraft);
+        const selected = globalDraft.find(item => item.id === selectedId) || null;
+        detailDraft = selected ? structuredClone(selected) : null;
+        detailBaseline = detailDraft ? JSON.stringify(detailDraft) : '';
+        render();
+        if (!result.total) return toastr.warning('主页预设中没有可同步的已绑定模型，请先保存对应 API 配置。');
+        toastr.success(`已同步主页模型：更新 ${result.updated} 个，新增 ${result.added} 个。点击“保存全部”写入设置。`);
     });
     placementButton.on('click', () => void chooseQuickActionPlacement(draftPlacement, value => {
         draftPlacement = value;
@@ -3313,7 +3384,7 @@ async function manageQuickActions() {
         const validPresetNames = new Set($('#settings_preset_openai option').map((_, option) => normalizeText(option.textContent)).get());
         if (globalDraft.some(action => action.preset && !validPresetNames.has(action.preset))) return toastr.warning('方案引用了已不存在的 preset，请重新选择并保存方案。');
         globalDraft.forEach((action, index) => {
-            action.name = sanitizeName(action.name) || `方案${index + 1}`;
+            action.name = sanitizeName(action.name) || sanitizeName(action.model) || `方案${index + 1}`;
             action.sequence = index;
         });
         if (managerSaving) return;

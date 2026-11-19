@@ -558,6 +558,47 @@ try {
     assert.equal(state.settings.extension_settings.tavernApiDesk.quickActions[0].name, 'Unsaved');
     log('detail plus global save persists schemes before closing the manager');
 
+    const syncQuickActionsBaseline = structuredClone(state.settings.extension_settings.tavernApiDesk.quickActions);
+    const syncPage = await newPage();
+    const sync = syncPage.evaluate;
+    assert.equal(await sync(`quickActionDisplayName({ name: '', model: 'fresh-model' })`), 'fresh-model');
+    await sync(`
+        openai_settings[openai_setting_names.A].custom_model = 'home-model-a';
+        openai_settings[openai_setting_names.B].custom_model = 'home-model-b';
+        settings().presetBindings.A = ${JSON.stringify(profile.id)};
+        settings().presetBindings.B = ${JSON.stringify(profile.id)};
+        settings().quickActions = [normalizeQuickAction({
+            id: 'sync-a', name: '', preset: 'A', profileId: ${JSON.stringify(profile.id)}, model: 'stale-model'
+        })];
+        void manageQuickActions();
+        true
+    `);
+    for (let i = 0; i < 50 && !await sync(`Boolean(document.querySelector('dialog[open] .tavern-api__quick-manager'))`); i++) {
+        await new Promise(resolve => setTimeout(resolve, 30));
+    }
+    assert.deepEqual(await sync(`[
+        document.querySelector('.tavern-api__quick-field input')?.placeholder,
+        Boolean(document.querySelector('.tavern-api__quick-sync-native'))
+    ]`), ['留空使用模型名称', true]);
+    await sync(`document.querySelector('.tavern-api__quick-sync-native').click()`);
+    assert.deepEqual(await sync(`[...document.querySelectorAll('.tavern-api__quick-select')].map(node => node.textContent)`),
+        ['home-model-a', 'home-model-b']);
+    await sync(`document.querySelector('.tavern-api__quick-header-actions .tavern-api__save-button').click()`);
+    for (let i = 0; i < 50 && await sync(`Boolean(document.querySelector('dialog[open] .tavern-api__quick-manager'))`); i++) {
+        await new Promise(resolve => setTimeout(resolve, 30));
+    }
+    assert.deepEqual(await sync(`settings().quickActions.map(({ name, preset, model }) => ({ name, preset, model }))`), [
+        { name: 'home-model-a', preset: 'A', model: 'home-model-a' },
+        { name: 'home-model-b', preset: 'B', model: 'home-model-b' },
+    ]);
+    await syncPage.reload();
+    assert.deepEqual(await sync(`settings().quickActions.map(({ name, preset, model }) => ({ name, preset, model }))`), [
+        { name: 'home-model-a', preset: 'A', model: 'home-model-a' },
+        { name: 'home-model-b', preset: 'B', model: 'home-model-b' },
+    ]);
+    await sync(`settings().quickActions = ${JSON.stringify(syncQuickActionsBaseline)}; persistSettingsNow()`);
+    log('quick actions default to model names and sync every bound native preset model without duplicates');
+
     const orderPage = await newPage();
     const order = orderPage.evaluate;
     const readMenuOrder = () => order(`(() => {

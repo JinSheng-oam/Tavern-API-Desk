@@ -1287,11 +1287,21 @@ dialog.popup:has(.tavern-api__quick-manager) .popup-controls {
 .tavern-api__quick-list-toolbar {
     display: flex;
     flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.tavern-api__quick-list-actions {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.45rem;
 }
 
 .tavern-api__quick-list-toolbar .menu_button {
     display: inline-flex;
-    width: 100%;
+    width: auto;
     min-height: 36px;
     align-items: center;
     justify-content: center;
@@ -1848,6 +1858,10 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
         gap: 0.5rem;
     }
 
+    .tavern-api__quick-list-actions {
+        margin-left: auto;
+    }
+
     .tavern-api__quick-manager .tavern-api__quick-list-toolbar > strong {
         display: block;
     }
@@ -1904,6 +1918,23 @@ dialog.popup:has(.tavern-api__placement-popup) .popup-controls {
 #tavern_api_model_control > select {
     min-width: 0;
     flex: 1 1 12rem;
+}
+
+@media (max-width: 430px) {
+    .tavern-api__quick-manager .tavern-api__quick-list-toolbar > strong {
+        display: none;
+    }
+
+    .tavern-api__quick-list-actions {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .tavern-api__quick-list-actions .menu_button {
+        min-width: 0;
+        flex: 1 1 0;
+        padding-inline: 0.45rem;
+    }
 }
 
 @media (max-width: 760px) {
