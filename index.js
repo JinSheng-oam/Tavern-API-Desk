@@ -2970,9 +2970,20 @@ function quickActionDisplayName(action, index = 0) {
 function nativePresetQuickActionModel(name, profile) {
     const preset = nativePresetByName(name);
     const config = FORMATS[profile?.format];
-    if (!preset || !config || !matchesFormat(profile.format, preset) || typeof preset[config.modelField] !== 'string') return '';
-    const model = normalizeText(preset[config.modelField]).slice(0, 500);
-    return model && !platform.isModelAction(model) ? model : '';
+    if (profile && preset && config && matchesFormat(profile.format, preset)
+        && typeof preset[config.modelField] === 'string') {
+        const nativeModel = normalizeText(preset[config.modelField]).slice(0, 500);
+        if (nativeModel && !platform.isModelAction(nativeModel)) {
+            // Keep the homepage snapshot in step with the current native preset
+            // before the quick-action draft is committed.
+            settings().presetModels[name] = presetModelSnapshot(profile, nativeModel);
+            return nativeModel;
+        }
+    }
+    const snapshot = settings().presetModels[name];
+    const snapshotModel = normalizeText(snapshot?.model).slice(0, 500);
+    return profile && snapshot?.profileId === profile.id && snapshot?.format === profile.format
+        && snapshotModel && !platform.isModelAction(snapshotModel) ? snapshotModel : '';
 }
 
 function syncQuickActionsFromNativePresets(actions) {
@@ -2988,10 +2999,14 @@ function syncQuickActionsFromNativePresets(actions) {
     let updated = 0;
     for (const action of actions) {
         if (!action.preset) continue;
-        const profile = profiles().find(item => item.id === action.profileId)
-            || profiles().find(item => item.id === settings().presetBindings[action.preset]);
+        const profile = profiles().find(item => item.id === settings().presetBindings[action.preset])
+            || profiles().find(item => item.id === action.profileId);
         const model = nativePresetQuickActionModel(action.preset, profile);
         if (!model) continue;
+        if (profile && action.profileId !== profile.id) {
+            action.profileId = profile.id;
+            updated++;
+        }
         const previousModel = sanitizeName(action.model);
         const previousName = sanitizeName(action.name);
         if (action.model !== model) {

@@ -563,10 +563,16 @@ try {
     const sync = syncPage.evaluate;
     assert.equal(await sync(`quickActionDisplayName({ name: '', model: 'fresh-model' })`), 'fresh-model');
     await sync(`
-        openai_settings[openai_setting_names.A].custom_model = 'home-model-a';
+        openai_settings[openai_setting_names.A].custom_model = '';
         openai_settings[openai_setting_names.B].custom_model = 'home-model-b';
         settings().presetBindings.A = ${JSON.stringify(profile.id)};
         settings().presetBindings.B = ${JSON.stringify(profile.id)};
+        settings().presetModels.A = {
+            profileId: ${JSON.stringify(profile.id)}, format: 'openai', model: 'home-model-a'
+        };
+        settings().presetModels.B = {
+            profileId: ${JSON.stringify(profile.id)}, format: 'openai', model: 'stale-model-b'
+        };
         settings().quickActions = [normalizeQuickAction({
             id: 'sync-a', name: '', preset: 'A', profileId: ${JSON.stringify(profile.id)}, model: 'stale-model'
         })];
