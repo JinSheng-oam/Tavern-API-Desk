@@ -1087,10 +1087,12 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .popup-button-ok:fo
 
 #extensionsMenu.tavern-api__menu-level-2,
 .tavern-api__quick-menu:not(.tavern-api__quick-menu--inline) {
-    --quick-menu-width: 18rem;
-    --quick-menu-inline-height: 70dvh;
-    --quick-menu-height: 28rem;
-    --quick-menu-row-height: 2.25rem;
+    --quick-menu-width: 15rem;
+    --quick-menu-inline-height: 54dvh;
+    --quick-menu-height: 21rem;
+    --quick-menu-row-height: 1.9rem;
+    --quick-menu-font-size: 0.94em;
+    --quick-menu-row-padding: 4px;
 }
 
 .tavern-api__quick-menu {
@@ -1100,7 +1102,7 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .popup-button-ok:fo
     z-index: 10050;
     box-sizing: border-box;
     width: var(--tavern-api-quick-menu-custom-width, max-content);
-    min-width: min(var(--tavern-api-quick-menu-custom-width, 9rem), calc(100dvw - 1rem));
+    min-width: min(var(--tavern-api-quick-menu-custom-width, 8rem), calc(100dvw - 1rem));
     max-width: min(var(--tavern-api-quick-menu-custom-width, var(--quick-menu-width)), calc(100dvw - 1rem));
     max-height: min(var(--tavern-api-quick-menu-custom-height, var(--quick-menu-height)), calc(100dvh - 1rem));
     margin: 0;
@@ -1110,7 +1112,7 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .popup-button-ok:fo
     padding: 0;
     background: var(--SmartThemeBlurTintColor);
     color: var(--SmartThemeBodyColor);
-    font-size: var(--tavern-api-quick-menu-font-size, inherit);
+    font-size: var(--tavern-api-quick-menu-font-size, var(--quick-menu-font-size, inherit));
     box-shadow: none !important;
     filter: none !important;
     list-style: none;
@@ -1118,17 +1120,21 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .popup-button-ok:fo
 }
 
 :is(#extensionsMenu.tavern-api__menu-level-2, .tavern-api__quick-menu)[data-tavern-api-menu-size="compact"] {
-    --quick-menu-width: 14rem;
-    --quick-menu-inline-height: 48dvh;
-    --quick-menu-height: 19rem;
-    --quick-menu-row-height: 1.9rem;
+    --quick-menu-width: 11.5rem;
+    --quick-menu-inline-height: 38dvh;
+    --quick-menu-height: 14.5rem;
+    --quick-menu-row-height: 1.55rem;
+    --quick-menu-font-size: 0.85em;
+    --quick-menu-row-padding: 3px;
 }
 
 :is(#extensionsMenu.tavern-api__menu-level-2, .tavern-api__quick-menu)[data-tavern-api-menu-size="large"] {
-    --quick-menu-width: 24rem;
-    --quick-menu-inline-height: 82dvh;
-    --quick-menu-height: 36rem;
-    --quick-menu-row-height: 2.75rem;
+    --quick-menu-width: 19rem;
+    --quick-menu-inline-height: 68dvh;
+    --quick-menu-height: 27rem;
+    --quick-menu-row-height: 2.25rem;
+    --quick-menu-font-size: 1em;
+    --quick-menu-row-padding: 5px;
 }
 
 :is(#extensionsMenu.tavern-api__menu-level-2, .tavern-api__quick-menu)[data-tavern-api-custom-spacing="true"] {
@@ -1192,8 +1198,8 @@ dialog.popup:has(.tavern-api__model-manager) .popup-controls .popup-button-ok:fo
     min-height: var(--quick-menu-row-height);
     align-items: center;
     overflow: hidden;
-    padding: var(--tavern-api-quick-menu-spacing, 5px) 6px;
-    column-gap: 10px;
+    padding: var(--tavern-api-quick-menu-spacing, var(--quick-menu-row-padding, 4px)) 6px;
+    column-gap: 8px;
 }
 
 .tavern-api__quick-menu > [data-tavern-api-actionable="true"] {
