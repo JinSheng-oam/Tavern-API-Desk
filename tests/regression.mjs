@@ -353,7 +353,7 @@ try {
     const restart = restartPage.evaluate;
     const start = () => restart('enqueueOperation(restoreInitialProfileSelection)');
     await start();
-    assert.equal(await restart('document.getElementById("tavern_api_restore_quick").checked'), false);
+    assert.equal(await restart('document.getElementById("tavern_api_restore_quick").getAttribute("aria-pressed") === "true"'), false);
     await restart(`queueQuickAction({ model: 'quick-model' })`);
     await restart('persistSettingsNow()');
     await restartPage.reload();
@@ -694,9 +694,25 @@ try {
         const menu = document.getElementById('tavern_api_quick_inline_menu');
         const { width, left, right } = host.getBoundingClientRect();
         const item = menu.querySelector('[data-tavern-api-quick-action]');
+        const itemStyle = getComputedStyle(item);
+        const menuStyle = getComputedStyle(menu);
+        const maxHeight = menuStyle.maxHeight;
+        const fontSize = menuStyle.fontSize;
+        const rowGap = menuStyle.rowGap;
+        const paddingTop = itemStyle.paddingTop;
         const summary = item.querySelector('small')?.textContent ?? null;
         menu.querySelector('.tavern-api__quick-back').click();
-        return { width, firstLevelWidth, restored: host.getBoundingClientRect().width, fits: left >= 0 && right <= innerWidth, summary };
+        return {
+            width,
+            firstLevelWidth,
+            restored: host.getBoundingClientRect().width,
+            fits: left >= 0 && right <= innerWidth,
+            summary,
+            maxHeight,
+            fontSize,
+            rowGap,
+            paddingTop,
+        };
     })()`);
     const compact = await readInline();
     assert.ok(compact.fits && compact.width < compact.firstLevelWidth);
@@ -704,6 +720,9 @@ try {
     assert.equal(compact.summary, profile.name + ' · model-a');
     await order(`
         $('#tavern_api_quick_menu_width').val('180').trigger('change');
+        $('#tavern_api_quick_menu_height').val('220').trigger('change');
+        $('#tavern_api_quick_menu_font_size').val('18').trigger('change');
+        $('#tavern_api_quick_menu_spacing').val('10').trigger('change');
         document.getElementById('tavern_api_quick_menu_show_channel').click();
         persistSettingsNow()
     `);
@@ -711,11 +730,18 @@ try {
     await order(`document.getElementById('extensionsMenu').style.width = '100%';`);
     assert.deepEqual(await order(`[
         document.getElementById('tavern_api_quick_menu_width').value,
-        document.getElementById('tavern_api_quick_menu_show_channel').checked,
-        document.getElementById('tavern_api_quick_menu_show_model').checked
-    ]`), ['180', false, true]);
+        document.getElementById('tavern_api_quick_menu_height').value,
+        document.getElementById('tavern_api_quick_menu_font_size').value,
+        document.getElementById('tavern_api_quick_menu_spacing').value,
+        document.getElementById('tavern_api_quick_menu_show_channel').getAttribute('aria-pressed') === 'true',
+        document.getElementById('tavern_api_quick_menu_show_model').getAttribute('aria-pressed') === 'true'
+    ]`), ['180', '220', '18', '10', false, true]);
     const custom = await readInline();
     assert.equal(custom.width, 180);
+    assert.equal(custom.maxHeight, '220px');
+    assert.equal(custom.fontSize, '18px');
+    assert.equal(custom.rowGap, '10px');
+    assert.equal(custom.paddingTop, '10px');
     assert.equal(custom.summary, 'model-a');
     assert.equal(custom.restored, custom.firstLevelWidth);
     await order(`
@@ -728,6 +754,9 @@ try {
     assert.equal(capped.summary, profile.name);
     await order(`
         $('#tavern_api_quick_menu_width').val('').trigger('change');
+        $('#tavern_api_quick_menu_height').val('').trigger('change');
+        $('#tavern_api_quick_menu_font_size').val('').trigger('change');
+        $('#tavern_api_quick_menu_spacing').val('').trigger('change');
         document.getElementById('tavern_api_quick_menu_show_channel').click();
     `);
     const namesOnly = await readInline();
@@ -735,13 +764,17 @@ try {
     assert.equal(namesOnly.summary, null);
     assert.deepEqual(await order(`(() => {
         $('#tavern_api_quick_menu_width').val('180').trigger('change');
-        openQuickActionMenu(document.getElementById('extensionsMenuButton'), 'leftSendForm', { focusFirst:false });
+        $('#tavern_api_quick_menu_height').val('200').trigger('change');
+        $('#tavern_api_quick_menu_font_size').val('16').trigger('change');
+        $('#tavern_api_quick_menu_spacing').val('8').trigger('change');
+        openQuickActionMenu(document.getElementById('extensionsMenuButton'), 'leftSendForm', { focusFirst: false });
         const menu = document.querySelector('.tavern-api__quick-menu');
-        const result = [menu.getBoundingClientRect().width, Boolean(menu.querySelector('small'))];
+        const style = getComputedStyle(menu);
+        const result = [menu.getBoundingClientRect().width, style.maxHeight, style.fontSize, style.rowGap, Boolean(menu.querySelector('small'))];
         closeQuickActionMenu();
         return result;
-    })()`), [180, false]);
-    log('mobile submenu honors preset and custom widths, restores host width, and both menu layouts honor detail toggles');
+    })()`), [180, '200px', '16px', '8px', false]);
+    log('mobile submenu honors preset and custom dimensions/typography/spacing, restores host width, and both menu layouts honor toggle buttons');
     await order('teardownTavernApiDesk()');
     log('saved quick action order matches both menu layouts immediately and after reload despite stale sequence values');
 

@@ -9,7 +9,7 @@ export async function runNativeVisibilityRegressions({ page, state, log, capture
     assert.deepEqual(await run(`[document.querySelector('#tavern_api_extension_settings .inline-drawer-toggle').getAttribute('aria-expanded'),
         getComputedStyle(document.getElementById('tavern_api_extension_content')).display !== 'none']`), ['true', true]);
     assert.deepEqual(await run(`[
-        document.querySelector('#extensions_settings2 #tavern_api_show_native').checked,
+        document.querySelector('#extensions_settings2 #tavern_api_show_native').getAttribute('aria-pressed') === 'true',
         getComputedStyle(document.getElementById('chat_completion_source')).display !== 'none',
         getComputedStyle(document.getElementById('custom_form')).display !== 'none'
     ]`), [true, true, true]);
@@ -34,12 +34,12 @@ export async function runNativeVisibilityRegressions({ page, state, log, capture
     assert.equal(await run(`getComputedStyle(document.getElementById('tavern_api')).display !== 'none'`), true);
     assert.equal(state.settings.extension_settings.tavernApiDesk.showNativeApi, false);
     await page.reload();
-    assert.deepEqual(await run(`[$('#tavern_api_show_native').prop('checked'),getComputedStyle(document.getElementById('chat_completion_source')).display]`), [false, 'none']);
+    assert.deepEqual(await run(`[$('#tavern_api_show_native').attr('aria-pressed') === 'true',getComputedStyle(document.getElementById('chat_completion_source')).display]`), [false, 'none']);
     assert.equal(await run(`getComputedStyle(document.getElementById('fixture_connection_manager')).display`), 'none');
     log('extension setting hides native controls while keeping API Desk usable, retains native fields, and survives reload');
 
     state.failSettings = true;
-    await run(`$('#tavern_api_show_native').prop('checked',true).trigger('change'); persistSettingsNow()`);
+    await run(`if ($('#tavern_api_show_native').attr('aria-pressed') !== 'true') $('#tavern_api_show_native').trigger('click'); persistSettingsNow()`);
     assert.deepEqual(await run(`[$('#tavern_api_settings_retry').prop('hidden'), getComputedStyle(document.getElementById('custom_form')).display !== 'none']`), [false, true]);
     assert.notEqual(await run(`getComputedStyle(document.getElementById('tavern_api_settings_retry')).display`), 'none');
     assert.deepEqual(await run(`['fixture_connection_manager','title_api','main-API-selector-block','fixture_api_footer'].map(id => getComputedStyle(document.getElementById(id)).display !== 'none')`), [true, true, true, true]);
@@ -47,8 +47,8 @@ export async function runNativeVisibilityRegressions({ page, state, log, capture
     await run(`$('#tavern_api_settings_retry').trigger('click'); operationQueue`);
     assert.equal(state.settings.extension_settings.tavernApiDesk.showNativeApi, true);
     await page.reload();
-    assert.deepEqual(await run(`[$('#tavern_api_show_native').prop('checked'),getComputedStyle(document.getElementById('chat_completion_source')).display !== 'none']`), [true, true]);
-    await run(`$('#tavern_api_show_native').prop('checked',false).trigger('change'); persistSettingsNow()`);
+    assert.deepEqual(await run(`[$('#tavern_api_show_native').attr('aria-pressed') === 'true',getComputedStyle(document.getElementById('chat_completion_source')).display !== 'none']`), [true, true]);
+    await run(`if ($('#tavern_api_show_native').attr('aria-pressed') === 'true') $('#tavern_api_show_native').trigger('click'); persistSettingsNow()`);
     await run(`$('#tavern_api_extension_settings').remove(); updatePanelVisibility()`);
     assert.equal(await run(`getComputedStyle(document.getElementById('chat_completion_source')).display !== 'none'`), true);
     assert.equal(await run(`getComputedStyle(document.getElementById('fixture_connection_manager')).display !== 'none'`), true);

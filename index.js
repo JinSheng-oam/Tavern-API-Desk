@@ -102,7 +102,12 @@ const FORMATS = Object.freeze({
         endpointInput: '#openai_reverse_proxy',
     },
 });
-const QUICK_MENU_WIDTH = { min: 140, max: 600 };
+const QUICK_MENU_METRICS = Object.freeze({
+    width: { min: 140, max: 600 },
+    height: { min: 160, max: 900 },
+    fontSize: { min: 11, max: 24 },
+    spacing: { min: 0, max: 20 },
+});
 const DEFAULT_SETTINGS = {
     schemaVersion: SCHEMA_VERSION,
     profiles: [],
@@ -117,6 +122,9 @@ const DEFAULT_SETTINGS = {
     quickActionPlacement: 'leftSendForm',
     quickActionMenuSize: 'normal',
     quickActionMenuWidth: null,
+    quickActionMenuHeight: null,
+    quickActionMenuFontSize: null,
+    quickActionMenuSpacing: null,
     quickActionMenuShowChannel: true,
     quickActionMenuShowModel: true,
     restoreQuickActionOnStartup: false,
@@ -177,9 +185,9 @@ function settings() {
     return extension_settings[MODULE_NAME];
 }
 
-function normalizeQuickMenuWidth(value) {
+function normalizeQuickMenuMetric(value, bounds) {
     if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-    return Math.min(QUICK_MENU_WIDTH.max, Math.max(QUICK_MENU_WIDTH.min, Math.round(value)));
+    return Math.min(bounds.max, Math.max(bounds.min, Math.round(value)));
 }
 
 function profiles() {
@@ -484,7 +492,10 @@ function initializeSettings() {
     value.showNativeApi = value.showNativeApi !== false;
     value.quickActionMenuSize = ['compact', 'normal', 'large'].includes(value.quickActionMenuSize)
         ? value.quickActionMenuSize : 'normal';
-    value.quickActionMenuWidth = normalizeQuickMenuWidth(value.quickActionMenuWidth);
+    value.quickActionMenuWidth = normalizeQuickMenuMetric(value.quickActionMenuWidth, QUICK_MENU_METRICS.width);
+    value.quickActionMenuHeight = normalizeQuickMenuMetric(value.quickActionMenuHeight, QUICK_MENU_METRICS.height);
+    value.quickActionMenuFontSize = normalizeQuickMenuMetric(value.quickActionMenuFontSize, QUICK_MENU_METRICS.fontSize);
+    value.quickActionMenuSpacing = normalizeQuickMenuMetric(value.quickActionMenuSpacing, QUICK_MENU_METRICS.spacing);
     value.quickActionMenuShowChannel = value.quickActionMenuShowChannel !== false;
     value.quickActionMenuShowModel = value.quickActionMenuShowModel !== false;
     value.restoreQuickActionOnStartup = value.restoreQuickActionOnStartup === true;
@@ -623,45 +634,95 @@ function mountExtensionSettings() {
                 <b>API Desk</b><span class="fa-solid fa-circle-chevron-down inline-drawer-icon down" aria-hidden="true"></span>
             </button>
             <div id="tavern_api_extension_content" class="inline-drawer-content">
-            <label class="checkbox_label" for="tavern_api_show_native">
-                <input id="tavern_api_show_native" type="checkbox"><span>显示酒馆原生 API 设置</span>
-            </label>
-            <small>关闭后隐藏原生连接配置、主 API 选择及聊天补全设置；可随时在此重新显示。</small>
-            <label class="checkbox_label" for="tavern_api_restore_quick">
-                <input id="tavern_api_restore_quick" type="checkbox" aria-describedby="tavern_api_restore_quick_help"><span>重启后保留 API 快速切换结果</span>
-            </label>
-            <small id="tavern_api_restore_quick_help">开启后，下一次快速切换成功时记住连接和模型。</small>
-            <label class="tavern-api__menu-size-setting" for="tavern_api_quick_menu_size">
-                <span>API 快速切换菜单大小</span>
-                <select id="tavern_api_quick_menu_size" class="text_pole">
-                    <option value="compact">紧凑</option><option value="normal">标准</option><option value="large">宽大</option>
-                </select>
-            </label>
-            <label class="tavern-api__menu-size-setting" for="tavern_api_quick_menu_width">
-                <span>自定义菜单宽度（px）</span>
-                <input id="tavern_api_quick_menu_width" class="text_pole" type="number" inputmode="numeric"
-                    min="${QUICK_MENU_WIDTH.min}" max="${QUICK_MENU_WIDTH.max}" step="1" placeholder="跟随档位"
-                    aria-describedby="tavern_api_quick_menu_width_help">
-            </label>
-            <small id="tavern_api_quick_menu_width_help">${QUICK_MENU_WIDTH.min}–${QUICK_MENU_WIDTH.max} px，留空跟随大小档位，过宽时自动适应屏幕。</small>
-            <label class="checkbox_label" for="tavern_api_quick_menu_show_channel">
-                <input id="tavern_api_quick_menu_show_channel" type="checkbox"><span>显示快速切换方案的渠道</span>
-            </label>
-            <label class="checkbox_label" for="tavern_api_quick_menu_show_model">
-                <input id="tavern_api_quick_menu_show_model" type="checkbox"><span>显示快速切换方案的模型</span>
-            </label>
-            <div class="tavern-api__settings-save"><span id="tavern_api_settings_persistence" role="status" aria-live="polite"></span>
-                <button id="tavern_api_settings_retry" class="menu_button" type="button" hidden>重试保存</button></div>
+                <div class="tavern-api__settings-body">
+                <div class="tavern-api__settings-group">
+                    <div class="tavern-api__settings-group-title">界面与行为</div>
+                    <div class="tavern-api__setting-row">
+                        <div class="tavern-api__setting-meta">
+                            <span class="tavern-api__setting-label">酒馆原生 API 设置</span>
+                            <small>关闭后隐藏原生连接配置、主 API 选择及聊天补全设置；可随时重新显示。</small>
+                        </div>
+                        <button id="tavern_api_show_native" class="menu_button tavern-api__setting-toggle" type="button" aria-pressed="true"></button>
+                    </div>
+                    <div class="tavern-api__setting-row">
+                        <div class="tavern-api__setting-meta">
+                            <span class="tavern-api__setting-label">重启保留快速切换</span>
+                            <small id="tavern_api_restore_quick_help">开启后，下一次快速切换成功时记住连接和模型。</small>
+                        </div>
+                        <button id="tavern_api_restore_quick" class="menu_button tavern-api__setting-toggle" type="button" aria-pressed="false" aria-describedby="tavern_api_restore_quick_help"></button>
+                    </div>
+                </div>
+                <div class="tavern-api__settings-group">
+                    <div class="tavern-api__settings-group-title">快速切换二级菜单</div>
+                    <label class="tavern-api__menu-size-setting" for="tavern_api_quick_menu_size">
+                        <span>菜单预设档位</span>
+                        <select id="tavern_api_quick_menu_size" class="text_pole">
+                            <option value="compact">紧凑</option><option value="normal">标准</option><option value="large">宽大</option>
+                        </select>
+                    </label>
+                    <div class="tavern-api__settings-metrics-grid">
+                        <label class="tavern-api__metric-field" for="tavern_api_quick_menu_width">
+                            <span>宽度（px）</span>
+                            <input id="tavern_api_quick_menu_width" class="text_pole" type="number" inputmode="numeric"
+                                min="${QUICK_MENU_METRICS.width.min}" max="${QUICK_MENU_METRICS.width.max}" step="1" placeholder="跟随档位"
+                                aria-describedby="tavern_api_quick_menu_metrics_help">
+                        </label>
+                        <label class="tavern-api__metric-field" for="tavern_api_quick_menu_height">
+                            <span>高度（px）</span>
+                            <input id="tavern_api_quick_menu_height" class="text_pole" type="number" inputmode="numeric"
+                                min="${QUICK_MENU_METRICS.height.min}" max="${QUICK_MENU_METRICS.height.max}" step="1" placeholder="跟随档位"
+                                aria-describedby="tavern_api_quick_menu_metrics_help">
+                        </label>
+                        <label class="tavern-api__metric-field" for="tavern_api_quick_menu_font_size">
+                            <span>文字大小（px）</span>
+                            <input id="tavern_api_quick_menu_font_size" class="text_pole" type="number" inputmode="numeric"
+                                min="${QUICK_MENU_METRICS.fontSize.min}" max="${QUICK_MENU_METRICS.fontSize.max}" step="1" placeholder="跟随档位"
+                                aria-describedby="tavern_api_quick_menu_metrics_help">
+                        </label>
+                        <label class="tavern-api__metric-field" for="tavern_api_quick_menu_spacing">
+                            <span>项间隔（px）</span>
+                            <input id="tavern_api_quick_menu_spacing" class="text_pole" type="number" inputmode="numeric"
+                                min="${QUICK_MENU_METRICS.spacing.min}" max="${QUICK_MENU_METRICS.spacing.max}" step="1" placeholder="跟随档位"
+                                aria-describedby="tavern_api_quick_menu_metrics_help">
+                        </label>
+                    </div>
+                    <small id="tavern_api_quick_menu_metrics_help">留空跟随预设档位；宽/高超出屏幕时自动适配（宽 ${QUICK_MENU_METRICS.width.min}–${QUICK_MENU_METRICS.width.max}、高 ${QUICK_MENU_METRICS.height.min}–${QUICK_MENU_METRICS.height.max}、字号 ${QUICK_MENU_METRICS.fontSize.min}–${QUICK_MENU_METRICS.fontSize.max}、间隔 ${QUICK_MENU_METRICS.spacing.min}–${QUICK_MENU_METRICS.spacing.max}）。</small>
+                    <div class="tavern-api__settings-chips">
+                        <button id="tavern_api_quick_menu_show_channel" class="menu_button tavern-api__setting-chip" type="button" aria-pressed="true"></button>
+                        <button id="tavern_api_quick_menu_show_model" class="menu_button tavern-api__setting-chip" type="button" aria-pressed="true"></button>
+                    </div>
+                </div>
+                <div class="tavern-api__settings-save"><span id="tavern_api_settings_persistence" role="status" aria-live="polite"></span>
+                    <button id="tavern_api_settings_retry" class="menu_button" type="button" hidden>重试保存</button></div>
+                </div>
             </div>
         </div></div>`);
     $(container).append(section);
     section.find('.inline-drawer-toggle').on('click', function () {
         $(this).attr('aria-expanded', String($(this).attr('aria-expanded') !== 'true'));
     });
-    section.find('#tavern_api_show_native').prop('checked', settings().showNativeApi).on('change', function () {
-        settings().showNativeApi = this.checked;
-        updatePanelVisibility();
-        scheduleSettingsSave();
+    const renderToggle = (button, active, { label = '', onText = '已开启', offText = '已关闭' } = {}) => {
+        button.attr('aria-pressed', String(active)).empty();
+        if (label) button.append($('<span>').text(label));
+        button.append($('<span class="tavern-api__toggle-badge" aria-hidden="true">').text(active ? onText : offText));
+    };
+    const bindToggle = (selector, initial, options) => {
+        const button = section.find(selector);
+        renderToggle(button, initial, options);
+        button.on('click', () => {
+            const next = button.attr('aria-pressed') !== 'true';
+            renderToggle(button, next, options);
+            options.onChange(next);
+        });
+    };
+    bindToggle('#tavern_api_show_native', settings().showNativeApi, {
+        onText: '已显示',
+        offText: '已隐藏',
+        onChange: next => {
+            settings().showNativeApi = next;
+            updatePanelVisibility();
+            scheduleSettingsSave();
+        },
     });
     section.find('#tavern_api_settings_retry').on('click', () => void enqueueOperation(persistSettingsNow));
     const saveQuickMenuSettings = () => {
@@ -672,24 +733,40 @@ function mountExtensionSettings() {
         settings().quickActionMenuSize = this.value;
         saveQuickMenuSettings();
     });
-    section.find('#tavern_api_quick_menu_width').val(settings().quickActionMenuWidth ?? '').on('change', function () {
-        settings().quickActionMenuWidth = normalizeQuickMenuWidth(this.valueAsNumber);
-        this.value = settings().quickActionMenuWidth ?? '';
-        saveQuickMenuSettings();
-    });
-    for (const [field, key] of [
-        ['channel', 'quickActionMenuShowChannel'],
-        ['model', 'quickActionMenuShowModel'],
+    for (const [id, key, bounds] of [
+        ['width', 'quickActionMenuWidth', QUICK_MENU_METRICS.width],
+        ['height', 'quickActionMenuHeight', QUICK_MENU_METRICS.height],
+        ['font_size', 'quickActionMenuFontSize', QUICK_MENU_METRICS.fontSize],
+        ['spacing', 'quickActionMenuSpacing', QUICK_MENU_METRICS.spacing],
     ]) {
-        section.find(`#tavern_api_quick_menu_show_${field}`).prop('checked', settings()[key]).on('change', function () {
-            settings()[key] = this.checked;
+        section.find(`#tavern_api_quick_menu_${id}`).val(settings()[key] ?? '').on('change', function () {
+            settings()[key] = normalizeQuickMenuMetric(this.valueAsNumber, bounds);
+            this.value = settings()[key] ?? '';
             saveQuickMenuSettings();
         });
     }
-    section.find('#tavern_api_restore_quick').prop('checked', settings().restoreQuickActionOnStartup).on('change', function () {
-        settings().restoreQuickActionOnStartup = this.checked;
-        if (!this.checked) settings().lastQuickConnection = null;
-        void enqueueOperation(persistSettingsNow);
+    for (const [field, key, label] of [
+        ['channel', 'quickActionMenuShowChannel', '显示渠道'],
+        ['model', 'quickActionMenuShowModel', '显示模型'],
+    ]) {
+        bindToggle(`#tavern_api_quick_menu_show_${field}`, settings()[key], {
+            label,
+            onText: '开',
+            offText: '关',
+            onChange: next => {
+                settings()[key] = next;
+                saveQuickMenuSettings();
+            },
+        });
+    }
+    bindToggle('#tavern_api_restore_quick', settings().restoreQuickActionOnStartup, {
+        onText: '已开启',
+        offText: '已关闭',
+        onChange: next => {
+            settings().restoreQuickActionOnStartup = next;
+            if (!next) settings().lastQuickConnection = null;
+            void enqueueOperation(persistSettingsNow);
+        },
     });
     renderDeskPersistence();
 }
@@ -3767,7 +3844,15 @@ function closeQuickActionMenu() {
     if (extensionsMenu) {
         extensionsMenu.classList.remove('tavern-api__menu-level-2');
         extensionsMenu.removeAttribute('data-tavern-api-menu-size');
-        extensionsMenu.style.removeProperty('--tavern-api-quick-menu-custom-width');
+        extensionsMenu.removeAttribute('data-tavern-api-custom-spacing');
+        for (const prop of [
+            '--tavern-api-quick-menu-custom-width',
+            '--tavern-api-quick-menu-custom-height',
+            '--tavern-api-quick-menu-font-size',
+            '--tavern-api-quick-menu-spacing',
+        ]) {
+            extensionsMenu.style.removeProperty(prop);
+        }
     }
     anchor?.setAttribute?.('aria-expanded', 'false');
     quickActionPopper?.destroy?.();
@@ -3808,7 +3893,16 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     const extensionsMenu = inline ? document.getElementById('extensionsMenu') : null;
     inline = Boolean(extensionsMenu);
     if (inline) extensionsMenu.classList.add('tavern-api__menu-level-2');
-    const { quickActions: actions, quickActionMenuSize, quickActionMenuWidth, quickActionMenuShowChannel, quickActionMenuShowModel } = settings();
+    const {
+        quickActions: actions,
+        quickActionMenuSize,
+        quickActionMenuWidth,
+        quickActionMenuHeight,
+        quickActionMenuFontSize,
+        quickActionMenuSpacing,
+        quickActionMenuShowChannel,
+        quickActionMenuShowModel,
+    } = settings();
     const menu = $('<ul class="list-group ctx-menu tavern-api__quick-menu" role="menu" aria-label="API 快速切换方案" tabindex="-1">')
         .toggleClass('tavern-api__quick-menu--extensions', placement === 'extensionsMenu')
         .toggleClass('tavern-api__quick-menu--inline', inline)
@@ -3816,6 +3910,12 @@ function openQuickActionMenu(anchor, placement, { toggle = true, focusFirst = tr
     const sizeTarget = extensionsMenu || menu[0];
     sizeTarget.setAttribute('data-tavern-api-menu-size', quickActionMenuSize);
     if (quickActionMenuWidth !== null) sizeTarget.style.setProperty('--tavern-api-quick-menu-custom-width', `${quickActionMenuWidth}px`);
+    if (quickActionMenuHeight !== null) sizeTarget.style.setProperty('--tavern-api-quick-menu-custom-height', `${quickActionMenuHeight}px`);
+    if (quickActionMenuFontSize !== null) sizeTarget.style.setProperty('--tavern-api-quick-menu-font-size', `${quickActionMenuFontSize}px`);
+    if (quickActionMenuSpacing !== null) {
+        sizeTarget.style.setProperty('--tavern-api-quick-menu-spacing', `${quickActionMenuSpacing}px`);
+        sizeTarget.setAttribute('data-tavern-api-custom-spacing', 'true');
+    }
     if (inline) menu.attr('id', 'tavern_api_quick_inline_menu');
     menu.appendTo(inline ? extensionsMenu : document.body);
     quickActionMenu = menu;

@@ -7,7 +7,7 @@ export async function runPostProcessingRegressions({ page, state, log }) {
     assert.deepEqual(await run(`(() => { const select=document.getElementById('tavern_api_post_processing'); return [select.value,
         [...select.querySelectorAll('optgroup')].map(group=>group.label), [...select.options].map(option=>option.value)]; })()`),
     ['', ['With Tools', 'No Tools'], ['', 'merge_tools', 'semi_tools', 'strict_tools', 'merge', 'semi', 'strict', 'single']]);
-    await run(`$('#tavern_api_show_native').prop('checked',false).trigger('change');
+    await run(`if ($('#tavern_api_show_native').attr('aria-pressed') === 'true') $('#tavern_api_show_native').trigger('click');
         $('#tavern_api_post_processing').val('merge_tools').trigger('change'); new Promise(r=>setTimeout(r,200))`);
     assert.deepEqual(await run(`(async()=>[oai_settings.custom_prompt_post_processing, $('#custom_prompt_post_processing').val(),
         $('#tavern_api_post_processing').val(), window.fixturePostProcessingUpdates, (await fixtureGenerationData()).custom_prompt_post_processing])()`),
